@@ -1,0 +1,12 @@
+.idea
+*.tar
+*.pdf
+
+*.ipynb
+/checkpoints/*
+/data/*
+/.ipynb_checkpoints/*
+__pycache__
+cache/
+results/
+slurm*
