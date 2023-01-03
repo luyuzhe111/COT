@@ -9,18 +9,18 @@ import json
 """# Configuration"""
 parser = argparse.ArgumentParser(description='ProjNorm.')
 parser.add_argument('--arch', default='resnet18', type=str)
-parser.add_argument('--cifar_data_path', default='./data/CIFAR-100', type=str)
-parser.add_argument('--cifar_corruption_path', default='./data/CIFAR-100-C', type=str)
+parser.add_argument('--cifar_data_path', default='./data/CIFAR-10', type=str)
+parser.add_argument('--cifar_corruption_path', default='./data/CIFAR-10-C', type=str)
 parser.add_argument('--corruption', default='snow', type=str)
 parser.add_argument('--severity', default=5, type=int)
-parser.add_argument('--pseudo_iters', default=50, type=int)
+parser.add_argument('--pseudo_iters', default=1, type=int)
 parser.add_argument('--num_classes', default=10, type=int)
 parser.add_argument('--num_ood_samples', default=10000, type=int)
-parser.add_argument('--batch_size', default=128, type=int)
+parser.add_argument('--batch_size', default=64, type=int)
 parser.add_argument('--lr', default=0.001, type=float)
+parser.add_argument('--model_seed', default="1", type=str)
 parser.add_argument('--seed', default=1, type=int)
-parser.add_argument('--use_base_model', action='store_true',
-                    default=False, help='apply base_model for computing ProjNorm')
+parser.add_argument('--use_base_model', action='store_true', default=False, help='use base or ref model')
 args = vars(parser.parse_args())
 
 print(args)
@@ -41,63 +41,35 @@ if __name__ == "__main__":
     print('num of ood samples:', n_ood_sample)
     print('pseudo iters:', args['pseudo_iters'])
 
-    valset_iid = load_cifar_image(corruption_type='clean',
+    valset_ood = load_cifar_image(corruption_type=args['corruption'],
                                   clean_cifar_path=args['cifar_data_path'],
                                   corruption_cifar_path=args['cifar_corruption_path'],
-                                  corruption_severity=0,
+                                  corruption_severity=args['severity'],
                                   datatype='test',
                                   num_samples=n_ood_sample,
                                   type=type,
-                                  seed=random_seeds[0])
+                                  seed=random_seeds[1])
     
-    val_iid_loader = torch.utils.data.DataLoader(valset_iid,
-                                                 batch_size=args['batch_size'],
-                                                 shuffle=True)
-
-    valset_ood = load_cifar_image(corruption_type=args['corruption'],
-                                    clean_cifar_path=args['cifar_data_path'],
-                                    corruption_cifar_path=args['cifar_corruption_path'],
-                                    corruption_severity=args['severity'],
-                                    datatype='test',
-                                    num_samples=n_ood_sample,
-                                    type=type,
-                                    seed=random_seeds[1])
-    
-    val_ood_loader = torch.utils.data.DataLoader(valset_ood,
-                                                 batch_size=args['batch_size'],
-                                                 shuffle=True)
+    val_ood_loader = torch.utils.data.DataLoader(valset_ood, batch_size=args['batch_size'], shuffle=True)
 
     # init ProjNorm
     save_dir_path = f"./checkpoints/{type}/{args['arch']}"
 
-    base_model = torch.load('{}/base_model.pt'.format(save_dir_path))
+    base_model = torch.load(f"{save_dir_path}/base_model_{args['model_seed']}.pt")
     base_model.eval()
     PN = ProjNorm(base_model=base_model)
 
-    if not args['use_base_model']:
-        print('loading ref model...')
-        ref_model = torch.load('{}/ref_model.pt'.format(save_dir_path))
-        ref_model.eval()
-        PN.reference_model = ref_model
-
-    ################ train iid pseudo model ################
-    if args['arch'] == 'resnet18':
-        pseudo_model = ResNet18(num_classes=args['num_classes'], seed=args['seed']).cuda()
-    elif args['arch'] == 'resnet50':
-        pseudo_model = ResNet50(num_classes=args['num_classes'], seed=args['seed']).cuda()
-    elif args['arch'] == 'vgg11':
-        pseudo_model = VGG11(num_classes=args['num_classes'], seed=args['seed']).cuda()
+    if args['use_base_model']:
+        print('using base model...')
+        iid_model = 'base'
+        PN.id_model = base_model
     else:
-        raise ValueError('incorrect model name')
-
-    PN.update_pseudo_model(val_iid_loader,
-                           pseudo_model,
-                           lr=args['lr'],
-                           pseudo_iters=args['pseudo_iters'])
-
-    # compute IID ProjNorm
-    projnorm_value_iid = PN.compute_projnorm(PN.reference_model, PN.pseudo_model)
-
+        print('using ref model...')
+        iid_model = 'ref'
+        ref_model = torch.load(f"{save_dir_path}/ref_model_{args['model_seed'].split('_')[0]}_{args['pseudo_iters']}.pt")
+        ref_model.eval()
+        PN.id_model = ref_model
+        
     ################ train ood pseudo model ################
     if args['arch'] == 'resnet18':
         pseudo_model = ResNet18(num_classes=args['num_classes'], seed=args['seed']).cuda()
@@ -114,12 +86,7 @@ if __name__ == "__main__":
                            pseudo_iters=args['pseudo_iters'])
 
     # compute OOD ProjNorm
-    projnorm_value = PN.compute_projnorm(PN.reference_model, PN.pseudo_model)
-
-    print('=============in-distribution=============')
-    print('(in-distribution) ProjNorm value: ', projnorm_value_iid)
-    test_loss_iid, test_error_iid = evaluation(net=base_model, testloader=val_iid_loader)
-    print('(in-distribution) test error: ', test_error_iid)
+    projnorm_value = PN.compute_projnorm(PN.id_model, PN.pseudo_model)
 
     print('===========out-of-distribution===========')
     print('(out-of-distribution) ProjNorm value: ', projnorm_value)
@@ -129,23 +96,13 @@ if __name__ == "__main__":
 
     dataset = os.path.basename(args['cifar_data_path'])
     corruption = args['corruption']
-    result_dir = f"results/{dataset}/{args['arch']}/projnorm_{n_ood_sample}/{corruption}.json"
+    result_dir = f"results/{dataset}/{args['arch']}_{args['model_seed']}/projnorm-{iid_model}_{n_ood_sample}/{corruption}.json"
     print(result_dir, os.path.dirname(result_dir), os.path.basename(result_dir))
     os.makedirs(os.path.dirname(result_dir), exist_ok=True)
 
     if not os.path.exists(result_dir):
         with open(result_dir, 'w') as f:
-            data = [
-                {
-                    'corruption': corruption,
-                    'corruption level': 0,
-                    'method': 'projnorm',
-                    'metric': projnorm_value_iid,
-                    'acc': test_error_iid / 100,
-                    'error': 1 - test_error_iid / 100
-                }
-            ]
-            json.dump(data, f)
+            json.dump([], f)
 
     with open(result_dir, 'r') as f:
         data = json.load(f)

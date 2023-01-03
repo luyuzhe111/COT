@@ -15,7 +15,7 @@ parser.add_argument('--pseudo_iters', default=50, type=int)
 parser.add_argument('--num_classes', default=10, type=int)
 parser.add_argument('--batch_size', default=128, type=int)
 parser.add_argument('--lr', default=0.001, type=float)
-parser.add_argument('--train_epoch', default=2, type=int)
+parser.add_argument('--train_epoch', default=1, type=int)
 parser.add_argument('--seed', default=1, type=int)
 args = vars(parser.parse_args())
 
@@ -23,8 +23,7 @@ args = vars(parser.parse_args())
 def train(net, trainloader):
     net.train()
     optimizer = optim.SGD(net.parameters(), lr=args['lr'], momentum=0.9, weight_decay=0.0)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
-                                                           T_max=args['train_epoch'] * len(trainloader))
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args['train_epoch'] * len(trainloader))
     criterion = nn.CrossEntropyLoss()
 
     for epoch in range(args['train_epoch']):
@@ -49,6 +48,10 @@ def train(net, trainloader):
                       'Loss: %.3f | Acc: %.3f%% (%d/%d)| Lr: %.5f' % (
                           train_loss / (batch_idx + 1), 100. * correct / total, correct, total, current_lr))
             scheduler.step()
+        
+        if epoch % 5 == 0 and epoch > 0:
+            torch.save(net, f"{save_dir_path}/base_model_{args['seed']}_{epoch}.pt")
+    
     net.eval()
 
     return net
@@ -62,17 +65,16 @@ if __name__ == "__main__":
     if not os.path.exists(save_dir_path):
         os.makedirs(save_dir_path)
 
-    # setup train/val_iid loaders
-    trainset = load_cifar_image(corruption_type='clean',
-                                  clean_cifar_path=args['cifar_data_path'],
-                                  corruption_cifar_path=args['cifar_corruption_path'],
-                                  corruption_severity=0,
-                                  type=data_type,
-                                  datatype='train')
+    # setup train / val_iid loaders
+    trainset, val_set = load_cifar_image(corruption_type='clean',
+                                clean_cifar_path=args['cifar_data_path'],
+                                corruption_cifar_path=args['cifar_corruption_path'],
+                                corruption_severity=0,
+                                type=data_type,
+                                datatype='train')
     
-    trainloader = torch.utils.data.DataLoader(trainset,
-                                              batch_size=args['batch_size'],
-                                              shuffle=True)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args['batch_size'], shuffle=True)
+    valloader = torch.utils.data.DataLoader(trainset, batch_size=args['batch_size'], shuffle=True)
 
     # init and train base model
     if args['arch'] == 'resnet18':
@@ -87,8 +89,8 @@ if __name__ == "__main__":
     print('begin training...')
     base_model = train(base_model, trainloader)
     base_model.eval()
-    torch.save(base_model, '{}/base_model.pt'.format(save_dir_path))
-    print('base model saved to', '{}/base_model.pt'.format(save_dir_path))
+    torch.save(base_model, f"{save_dir_path}/base_model_{args['seed']}_{args['train_epoch']}.pt")
+    print('base model saved to', f"{save_dir_path}/base_model_{args['seed']}.pt")
 
     # init ProjNorm
     PN = ProjNorm(base_model=base_model)
@@ -108,7 +110,7 @@ if __name__ == "__main__":
                         lr=args['lr'],
                         pseudo_iters=args['pseudo_iters'])
     
-    torch.save(PN.reference_model.eval(), '{}/ref_model.pt'.format(save_dir_path))
-    print('reference model saved to', '{}/ref_model.pt'.format(save_dir_path))
+    torch.save(PN.reference_model.eval(), f"{save_dir_path}/ref_model_{args['seed']}.pt")
+    print('reference model saved to', f"{save_dir_path}/ref_model_{args['seed']}_{args['pseudo_iters']}.pt")
 
     print('========finished========')

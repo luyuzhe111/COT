@@ -2,7 +2,7 @@ import argparse
 from projnorm import *
 from load_data import *
 from model import ResNet18, ResNet50, VGG11
-from utils import gather_outputs
+from utils import gather_outputs, interpolate
 import numpy as np
 import json
 import torch
@@ -12,6 +12,7 @@ from tqdm import tqdm
 from sklearn.decomposition import PCA, KernelPCA
 import ot
 import ot.dr
+import torch.nn as nn
 
 def main():
     """# Configuration"""
@@ -26,7 +27,7 @@ def main():
     parser.add_argument('--num_classes', default=10, type=int)
     parser.add_argument('--num_ood_samples', default=10000, type=int)
     parser.add_argument('--batch_size', default=1000, type=int)
-    parser.add_argument('--model_seed', default=1, type=int)
+    parser.add_argument('--model_seed', default="1", type=str)
     parser.add_argument('--seed', default=1, type=int)
     args = vars(parser.parse_args())
 
@@ -44,7 +45,7 @@ def main():
     
     type = "cifar-100" if args['num_classes'] == 100 else "cifar-10"
 
-    train_set = load_cifar_image(corruption_type='clean',
+    train_set, val_set = load_cifar_image(corruption_type='clean',
                                   clean_cifar_path=args['cifar_data_path'],
                                   corruption_cifar_path=args['cifar_corruption_path'],
                                   corruption_severity=0,
@@ -54,9 +55,7 @@ def main():
                                   seed=random_seeds[0]
                                 )
     
-    val_iid_loader = torch.utils.data.DataLoader(train_set,
-                                                 batch_size=128,
-                                                 shuffle=False)
+    val_iid_loader = torch.utils.data.DataLoader(val_set, batch_size=128, shuffle=False)
 
     valset_ood = load_cifar_image(corruption_type=args['corruption'],
                                     clean_cifar_path=args['cifar_data_path'],
@@ -71,11 +70,10 @@ def main():
     
     cache_dir = f"./cache/{type}/{args['arch']}_{model_seed}"
     os.makedirs(cache_dir, exist_ok=True)
-    cache_id_dir = f"{cache_dir}/id_n{n_ref_sample}_{random_seeds[0]}.pkl"
-    cache_od_dir = f"{cache_dir}/od_{args['corruption']}_n{n_ood_sample}_{args['severity']}_{random_seeds[1]}.pkl"
+    cache_id_dir = f"{cache_dir}/id_val_{model_seed}.pkl"
+    cache_od_dir = f"{cache_dir}/od_{model_seed}_{args['corruption']}_n{n_ood_sample}_{args['severity']}_{random_seeds[1]}.pkl"
 
-    # init ProjNorm
-    save_dir_path = f"./checkpoints/{type}/{args['arch']}_{model_seed}"
+    save_dir_path = f"./checkpoints/{type}/{args['arch']}"
 
     base_model = torch.load(f"{save_dir_path}/base_model_{args['model_seed']}.pt", map_location=device)
     model = base_model.eval()
@@ -86,65 +84,91 @@ def main():
     iid_acc = ( (iid_preds == iid_tars).sum() / len(iid_tars) ).item()
     ood_acc = ( (ood_preds == ood_tars).sum() / len(ood_tars) ).item()
 
-    print('train acc:', iid_acc)
+    print('validation acc:', iid_acc)
     print('out-distribution acc:', ood_acc)
 
     metric = args['metric']
 
-    if metric == 'wd':
+    if metric == 'mmd':
+        iid_mean = iid_acts.mean(0)
+        ood_mean = ood_acts.mean(0)
+
+        dist = ( (iid_mean - ood_mean) ** 2 ).mean()
+
+    elif metric == 'wd':
         M = ot.dist(iid_acts, ood_acts)
-        weights = torch.as_tensor([]).to(device)
-        dist = ot.emd2(weights, weights, M, numItermax=10**8)
-    
-    elif metric == 'smwd':
-        act = nn.Softmax(dim=1)
-        sm_iid_acts, sm_ood_acts = act(iid_acts), act(ood_acts)
-        M = ot.dist(sm_iid_acts, sm_ood_acts)
         weights = torch.as_tensor([]).to(device)
         dist = ot.emd2(weights, weights, M, numItermax=10**8)
     
     elif metric == 'swd':
         n_class = args['num_classes']
-        proj = torch.as_tensor(ot.sliced.get_random_projections(n_class, n_class * 10, seed=0)).to(device=device, dtype=torch.float)
-        dist = ot.sliced.sliced_wasserstein_distance(iid_acts, ood_acts, projections=proj)
-    
-    elif metric == 'smswd':
-        n_class = args['num_classes']
-        act = nn.Softmax(dim=1)
-        sm_iid_acts, sm_ood_acts = act(iid_acts), act(ood_acts)
-        proj = torch.as_tensor(ot.sliced.get_random_projections(n_class, n_class * 10, seed=0)).to(device=device, dtype=torch.float)
-        dist = ot.sliced.sliced_wasserstein_distance(sm_iid_acts, sm_ood_acts, projections=proj)
+        n_slice = n_class * 100
+        proj = torch.as_tensor(ot.sliced.get_random_projections(n_class, n_slice, seed=0)).to(device=device, dtype=torch.float)
+        
+        slice_batch_size = 100
+        n_batch = math.ceil(n_slice // slice_batch_size)
+        dist = 0
+        for i in range(n_batch):
+            proj_batch = proj[:, i*slice_batch_size: (i+1)*slice_batch_size]
+            iid_acts_batch = iid_acts @ proj_batch
+            ood_acts_batch = ood_acts @ proj_batch
+            iid_sorted_batch = torch.sort(iid_acts_batch, dim=0)[0]
+            ood_sorted_batch = torch.sort(ood_acts_batch, dim=0)[0]
+
+            p_interp, q_interp = interpolate(iid_sorted_batch, ood_sorted_batch)
+            dist += torch.pow( (torch.sort(p_interp, dim=0)[0] - torch.sort(q_interp, dim=0)[0]), 2 ).sum(0).sum()
+        
+        dist /= n_slice
     
     elif metric == 'cwd':
-        dist = torch.pow( (torch.sort(iid_acts, dim=0)[0] - torch.sort(ood_acts, dim=0)[0]), 2 ).sum(0).mean()
+        p = torch.sort(iid_acts, dim=0)[0]
+        q = torch.sort(ood_acts, dim=0)[0]
+
+        p_interp, q_interp = interpolate(p, q)
+        
+        dist = torch.pow( p_interp - q_interp, 2).sum(0).mean()
     
+    elif metric == 'ncwd':
+        iid_acts_min = torch.amin(iid_acts, 0)
+        iid_acts_max = torch.amax(iid_acts, 0)
+
+        n_iid_acts = (iid_acts - iid_acts_min) / ( iid_acts_max - iid_acts_min )
+        n_ood_acts = (ood_acts - iid_acts_min) / ( iid_acts_max - iid_acts_min )
+
+        p = torch.sort(n_iid_acts, dim=0)[0]
+        q = torch.sort(n_ood_acts, dim=0)[0]
+
+        p_interp, q_interp = interpolate(p, q)
+        
+        dist = torch.pow( p_interp - q_interp, 2).sum(0).mean()
+    
+    elif metric == 'smncwd':
+        act = nn.Softmax(dim=1)
+        iid_acts, ood_acts = act(iid_acts), act(ood_acts)
+
+        iid_acts_min = torch.amin(iid_acts, 0)
+        iid_acts_max = torch.amax(iid_acts, 0)
+
+        n_iid_acts = (iid_acts - iid_acts_min) / ( iid_acts_max - iid_acts_min )
+        n_ood_acts = (ood_acts - iid_acts_min) / ( iid_acts_max - iid_acts_min )
+
+        p = torch.sort(n_iid_acts, dim=0)[0]
+        q = torch.sort(n_ood_acts, dim=0)[0]
+
+        p_interp, q_interp = interpolate(p, q)
+        
+        dist = torch.pow( p_interp - q_interp, 2).sum(0).mean()
+
     elif metric == 'smcwd':
         act = nn.Softmax(dim=1)
         sm_iid_acts, sm_ood_acts = act(iid_acts), act(ood_acts)
-        dist = torch.pow( (torch.sort(sm_iid_acts, dim=0)[0] - torch.sort(sm_ood_acts, dim=0)[0]), 2 ).sum(0).mean()
 
-    elif metric == 'pwd':
-        print('applying pca...')
-        pca = PCA(n_components=10, random_state=0)
-        pca.fit(iid_acts.cpu())
-        print('explained variance:', np.cumsum(pca.explained_variance_ratio_))
-        p_iid_acts = pca.transform(iid_acts.cpu())
-        p_ood_acts = pca.transform(ood_acts.cpu())
-        M = torch.from_numpy( ot.dist(p_iid_acts, p_ood_acts) ).to(device)
-        weights = torch.as_tensor([]).to(device)
-        print('solving wd...')
-        dist = ot.emd2(weights, weights, M, numItermax=10**8)
-    
-    elif metric == 'kpwd':
-        print('applying kernel pca...')
-        pca = KernelPCA(n_components=10, kernel='rbf', random_state=0)
-        pca.fit(iid_acts.cpu())
-        p_iid_acts = pca.transform(iid_acts.cpu())
-        p_ood_acts = pca.transform(ood_acts.cpu())
-        M = torch.from_numpy( ot.dist(p_iid_acts, p_ood_acts) ).to(device)
-        weights = torch.as_tensor([]).to(device)
-        print('solving wd...')
-        dist = ot.emd2(weights, weights, M, numItermax=10**8)
+        p = torch.sort(sm_iid_acts, dim=0)[0]
+        q = torch.sort(sm_ood_acts, dim=0)[0]
+
+        p_interp, q_interp = interpolate(p, q)
+        
+        dist = torch.pow( p_interp - q_interp, 2).sum(0).mean()
     
     elif metric == 'mini-wd':
         torch.manual_seed(0)
@@ -168,29 +192,6 @@ def main():
             dist += ot.emd2(weights, weights, M, numItermax=10**7)
         
         dist /= n_batch
-    
-    elif metric == 'mini-swd':
-        torch.manual_seed(0)
-        sub_inds = torch.randperm(args['batch_size'])
-        sub_iid_acts = iid_acts[sub_inds]
-        
-        ood_size = len(ood_acts)
-        batch_size = args['batch_size']
-        n_batch = math.ceil(ood_size // batch_size)
-        perm_inds = torch.randperm(ood_size)
-        perm_ood_acts = ood_acts[perm_inds]
-
-        dist = 0
-        for i in range(n_batch):
-            print(f'wd for sample {i * batch_size} - {(i+1) * batch_size}')
-            ood_acts_batch = perm_ood_acts[i * batch_size: (i+1) * batch_size]
-            
-            # batch wd
-            n_class = args['num_classes']
-            proj = torch.as_tensor(ot.sliced.get_random_projections(n_class, n_class * 10, seed=0)).to(device=device, dtype=torch.float)
-            dist = ot.sliced.sliced_wasserstein_distance(sub_iid_acts, ood_acts_batch, projections=proj)
-        
-        dist /= n_batch
 
     print(f'{metric} distance:', dist.item())
 
@@ -198,9 +199,9 @@ def main():
     corruption = args['corruption']
 
     if 'mini' in metric:
-        result_dir = f"results/{dataset}/{args['arch']}/{args['metric']}_b{batch_size}_{n_ood_sample}/{corruption}.json"
+        result_dir = f"results/{dataset}/{args['arch']}_{model_seed}/{args['metric']}_b{batch_size}_{n_ood_sample}/{corruption}.json"
     else:
-        result_dir = f"results/{dataset}/{args['arch']}/{args['metric']}_r{n_ref_sample}_{n_ood_sample}/{corruption}.json"
+        result_dir = f"results/{dataset}/{args['arch']}_{model_seed}/{args['metric']}_{n_ood_sample}/{corruption}.json"
     
     print(result_dir, os.path.dirname(result_dir), os.path.basename(result_dir))
     os.makedirs(os.path.dirname(result_dir), exist_ok=True)
