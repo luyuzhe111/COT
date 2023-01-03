@@ -23,10 +23,12 @@ def main():
     parser.add_argument('--cifar_corruption_path', default='./data/CIFAR-10-C/numpy_format', type=str)
     parser.add_argument('--corruption', default='snow', type=str)
     parser.add_argument('--severity', default=1, type=int)
+    parser.add_argument('--ref', default='val', type=str)
     parser.add_argument('--num_ref_samples', default=50000, type=int)
     parser.add_argument('--num_classes', default=10, type=int)
     parser.add_argument('--num_ood_samples', default=10000, type=int)
     parser.add_argument('--batch_size', default=1000, type=int)
+    parser.add_argument('--reg', default=100, type=int)
     parser.add_argument('--model_seed', default="1", type=str)
     parser.add_argument('--seed', default=1, type=int)
     args = vars(parser.parse_args())
@@ -45,15 +47,27 @@ def main():
     
     type = "cifar-100" if args['num_classes'] == 100 else "cifar-10"
 
-    train_set, val_set = load_cifar_image(corruption_type='clean',
-                                  clean_cifar_path=args['cifar_data_path'],
-                                  corruption_cifar_path=args['cifar_corruption_path'],
-                                  corruption_severity=0,
-                                  num_samples=n_ref_sample,
-                                  datatype='train',
-                                  type=type,
-                                  seed=random_seeds[0]
-                                )
+    if args['ref'] == 'val':
+        _, val_set = load_cifar_image(corruption_type='clean',
+                                    clean_cifar_path=args['cifar_data_path'],
+                                    corruption_cifar_path=args['cifar_corruption_path'],
+                                    corruption_severity=0,
+                                    num_samples=n_ref_sample,
+                                    datatype='train',
+                                    type=type,
+                                    seed=random_seeds[0]
+                                    )
+    else:
+        val_set = load_cifar_image(corruption_type='clean',
+                                    clean_cifar_path=args['cifar_data_path'],
+                                    corruption_cifar_path=args['cifar_corruption_path'],
+                                    corruption_severity=0,
+                                    num_samples=10000,
+                                    datatype='test',
+                                    type=type,
+                                    seed=random_seeds[0]
+                                    )
+
     
     val_iid_loader = torch.utils.data.DataLoader(val_set, batch_size=128, shuffle=False)
 
@@ -70,7 +84,7 @@ def main():
     
     cache_dir = f"./cache/{type}/{args['arch']}_{model_seed}"
     os.makedirs(cache_dir, exist_ok=True)
-    cache_id_dir = f"{cache_dir}/id_val_{model_seed}.pkl"
+    cache_id_dir = f"{cache_dir}/id_{args['ref']}_{model_seed}.pkl"
     cache_od_dir = f"{cache_dir}/od_{model_seed}_{args['corruption']}_n{n_ood_sample}_{args['severity']}_{random_seeds[1]}.pkl"
 
     save_dir_path = f"./checkpoints/{type}/{args['arch']}"
@@ -94,9 +108,19 @@ def main():
         ood_mean = ood_acts.mean(0)
 
         dist = ( (iid_mean - ood_mean) ** 2 ).mean()
+    
+    elif metric == 'sinkhorn':
+        dist = ot.bregman.empirical_sinkhorn2(iid_acts, ood_acts, reg=args['reg'])
 
     elif metric == 'wd':
         M = ot.dist(iid_acts, ood_acts)
+        weights = torch.as_tensor([]).to(device)
+        dist = ot.emd2(weights, weights, M, numItermax=10**8)
+    
+    elif metric == 'smwd':
+        act = nn.Softmax(dim=1)
+        sm_iid_acts, sm_ood_acts = act(iid_acts), act(ood_acts)
+        M = ot.dist(sm_iid_acts, sm_ood_acts)
         weights = torch.as_tensor([]).to(device)
         dist = ot.emd2(weights, weights, M, numItermax=10**8)
     
@@ -116,7 +140,7 @@ def main():
             ood_sorted_batch = torch.sort(ood_acts_batch, dim=0)[0]
 
             p_interp, q_interp = interpolate(iid_sorted_batch, ood_sorted_batch)
-            dist += torch.pow( (torch.sort(p_interp, dim=0)[0] - torch.sort(q_interp, dim=0)[0]), 2 ).sum(0).sum()
+            dist += torch.pow( (p_interp - q_interp), 2 ).sum(0).sum()
         
         dist /= n_slice
     
@@ -199,9 +223,9 @@ def main():
     corruption = args['corruption']
 
     if 'mini' in metric:
-        result_dir = f"results/{dataset}/{args['arch']}_{model_seed}/{args['metric']}_b{batch_size}_{n_ood_sample}/{corruption}.json"
+        result_dir = f"results/{dataset}/{args['arch']}_{model_seed}/{args['metric']}_{args['ref']}_b{batch_size}_{n_ood_sample}/{corruption}.json"
     else:
-        result_dir = f"results/{dataset}/{args['arch']}_{model_seed}/{args['metric']}_{n_ood_sample}/{corruption}.json"
+        result_dir = f"results/{dataset}/{args['arch']}_{model_seed}/{args['metric']}_{args['ref']}_{n_ood_sample}/{corruption}.json"
     
     print(result_dir, os.path.dirname(result_dir), os.path.basename(result_dir))
     os.makedirs(os.path.dirname(result_dir), exist_ok=True)
@@ -217,6 +241,7 @@ def main():
         'corruption': corruption,
         'corruption level': args['severity'],
         'metric': float(dist),
+        'ref': args['metric'],
         'acc': float(ood_acc),
         'error': 1 - ood_acc
     })
