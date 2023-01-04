@@ -116,7 +116,7 @@ def main():
         M = ot.dist(iid_acts, ood_acts)
         weights = torch.as_tensor([]).to(device)
         dist = ot.emd2(weights, weights, M, numItermax=10**8)
-    
+
     elif metric == 'smwd':
         act = nn.Softmax(dim=1)
         sm_iid_acts, sm_ood_acts = act(iid_acts), act(ood_acts)
@@ -193,6 +193,13 @@ def main():
         p_interp, q_interp = interpolate(p, q)
         
         dist = torch.pow( p_interp - q_interp, 2).sum(0).mean()
+    
+    elif metric == 'score-wd':
+        softmax = nn.Softmax(dim=1)
+        iid_scores = torch.sort( torch.sum(softmax(iid_acts) * torch.log2(softmax(iid_acts)), dim=1) )[0]
+        ood_scores = torch.sort( torch.sum(softmax(ood_acts) * torch.log2(softmax(ood_acts)), dim=1) )[0]
+        
+        dist = torch.pow(iid_scores - ood_scores, 2).mean()
     
     elif metric == 'mini-wd':
         torch.manual_seed(0)
