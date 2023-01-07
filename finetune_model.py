@@ -66,15 +66,16 @@ if __name__ == "__main__":
         os.makedirs(save_dir_path)
 
     # setup train / val_iid loaders
-    trainset, val_set = load_cifar_image(corruption_type='clean',
+    trainset, valset = load_cifar_image(corruption_type='clean',
                                 clean_cifar_path=args['cifar_data_path'],
                                 corruption_cifar_path=args['cifar_corruption_path'],
                                 corruption_severity=0,
                                 type=data_type,
+                                seed=args['seed'],
                                 datatype='train')
     
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=args['batch_size'], shuffle=True)
-    valloader = torch.utils.data.DataLoader(trainset, batch_size=args['batch_size'], shuffle=True)
+    valloader = torch.utils.data.DataLoader(valset, batch_size=args['batch_size'], shuffle=True)
 
     # init and train base model
     if args['arch'] == 'resnet18':

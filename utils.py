@@ -24,7 +24,7 @@ def evaluation(net, testloader):
     return test_loss / total, 100. * correct / total
 
 
-def baseline_evaluation(net, testloader, iid_loader, t):
+def baseline_evaluation(net, testloader, val_loader, t, t_vec):
     net.eval()
     criterion = nn.CrossEntropyLoss()
     metrics = torch.tensor([0.0] * 3)
@@ -47,9 +47,6 @@ def baseline_evaluation(net, testloader, iid_loader, t):
             metrics[1] += loss.sum().item()
 
             # ATC
-            # val_iid_inputs, val_iid_targets = next(iter(iid_loader))
-            # val_iid_inputs, val_iid_targets = val_iid_inputs.cuda(), val_iid_targets.cuda()
-            # val_iid_outputs = net(val_iid_inputs)
             s_softmax = torch.sum(softmax(outputs) * torch.log2(softmax(outputs)), dim=1)
             loss = s_softmax < t
             metrics[2] += loss.sum().item()
@@ -79,6 +76,24 @@ def compute_t(net, iid_loader):
 
     sorted_s_softmax = torch.sort(s_softmax)[0]
     return sorted_s_softmax[misclassified - 1] + 1e-9
+
+
+def compute_t_vec(net, iid_loader):
+    net.eval()
+    misclassified = 0
+    res = []
+    with torch.no_grad():
+        for _, (inputs, targets) in enumerate(tqdm(iid_loader)):
+            inputs, targets = inputs.cuda(), targets.cuda()
+            outputs = net(inputs)
+            _, predicted = outputs.max(1)
+            misclassified += targets.size(0) - predicted.eq(targets).sum().item()
+            res.append(outputs)
+    
+    logits = torch.cat(res)
+
+    sorted_logits = torch.sort(logits, dim=0)[0]
+    return sorted_logits[misclassified - 1, :] + 1e-9
 
 
 def gather_outputs(model, dataloader, device, cache_dir):
