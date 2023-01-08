@@ -1,8 +1,11 @@
 .idea
 *.tar
 *.pdf
-
-*.ipynb
+*.ipynb_checkpoints/
 /checkpoints/*
 /data/*
 /.ipynb_checkpoints/*
+__pycache__
+cache/
+results/
+slurm*

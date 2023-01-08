@@ -3,7 +3,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import os
 import numpy as np
-
+from torch.utils.data.sampler import SubsetRandomSampler
 from tiny_imagenet import *
 
 
@@ -67,17 +67,25 @@ def load_image_dataset(corruption_type,
     dataset.targets = np.array([int(item) for item in dataset.targets])
     dataset.targets = dataset.targets[index_permute].tolist()
 
-    # randomly subsample data
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    if datatype == 'train' and num_samples < 50000:
-        indices = torch.randperm(50000)[:num_samples]
-        dataset = torch.utils.data.Subset(dataset, indices)
-        print('number of training data: ', len(dataset))
-    
-    if datatype == 'test' and num_samples < 10000:
-        indices = torch.randperm(10000)[:num_samples]
-        dataset = torch.utils.data.Subset(dataset, indices)
-        print('number of test data: ', len(dataset))
+    if training_flag:
+        train_inds = index_permute[:40000]
+        val_inds = index_permute[40000:]
 
-    return dataset
+        train_set = torch.utils.data.Subset(dataset, train_inds)
+        val_set = torch.utils.data.Subset(dataset, val_inds)
+
+        print("train size:", len(train_set))
+        print("valid size:", len(val_set))
+
+        return train_set, val_set
+
+    else:
+        # randomly subsample data
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        if num_samples < 10000:
+            indices = torch.randperm(10000)[:num_samples]
+            dataset = torch.utils.data.Subset(dataset, indices)
+            print('number of test data: ', len(dataset))
+
+        return dataset
