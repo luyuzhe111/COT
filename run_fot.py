@@ -16,8 +16,9 @@ parser.add_argument('--arch', default='resnet18', type=str)
 parser.add_argument('--layer', default='fc', type=str)
 parser.add_argument('--pooling', default='logits', type=str)
 parser.add_argument('--metric', default='wd', type=str)
-parser.add_argument('--cifar_data_path', default='./data/CIFAR-10', type=str)
-parser.add_argument('--cifar_corruption_path', default='./data/CIFAR-10-C/numpy_format', type=str)
+parser.add_argument('--data_path', default='./data/CIFAR-10', type=str)
+parser.add_argument('--corruption_path', default='./data/CIFAR-10-C/numpy_format', type=str)
+parser.add_argument('--data_type', default='cifar-10', type=str)
 parser.add_argument('--corruption', default='snow', type=str)
 parser.add_argument('--severity', default=1, type=int)
 parser.add_argument('--num_classes', default=10, type=int)
@@ -36,42 +37,42 @@ if __name__ == "__main__":
     torch.manual_seed(args['seed'])
     random_seeds = torch.randint(0, 10000, (2,))
     
-    type = "cifar-100" if args['num_classes'] == 100 else "cifar-10"
+    data_type = args['data_type']
 
     n_ood_sample = args['num_ood_samples']
 
-    valset_iid = load_cifar_image(corruption_type='clean',
-                                  clean_cifar_path=args['cifar_data_path'],
-                                  corruption_cifar_path=args['cifar_corruption_path'],
-                                  corruption_severity=0,
-                                  datatype='test',
-                                  type=type,
-                                  seed=random_seeds[0])
+    valset_iid = load_image_dataset(corruption_type='clean',
+                                    clean_path=args['data_path'],
+                                    corruption_path=args['corruption_path'],
+                                    corruption_severity=0,
+                                    datatype='test',
+                                    type=data_type,
+                                    seed=random_seeds[0])
     
     val_iid_loader = torch.utils.data.DataLoader(valset_iid,
                                                  batch_size=args['batch_size'],
                                                  shuffle=True)
 
-    valset_ood = load_cifar_image(corruption_type=args['corruption'],
-                                    clean_cifar_path=args['cifar_data_path'],
-                                    corruption_cifar_path=args['cifar_corruption_path'],
+    valset_ood = load_image_dataset(corruption_type=args['corruption'],
+                                    clean_path=args['data_path'],
+                                    corruption_path=args['corruption_path'],
                                     corruption_severity=args['severity'],
                                     datatype='test',
                                     num_samples=n_ood_sample,
-                                    type=type,
+                                    type=data_type,
                                     seed=random_seeds[1])
     
     val_ood_loader = torch.utils.data.DataLoader(valset_ood,
                                                  batch_size=args['batch_size'],
                                                  shuffle=True)
     
-    cache_dir = f"./cache/{type}/{args['arch']}-{args['layer']}"
+    cache_dir = f"./cache/{data_type}/{args['arch']}-{args['layer']}"
     os.makedirs(cache_dir, exist_ok=True)
     cache_id_dir = f"{cache_dir}/id_{random_seeds[0]}.pkl"
     cache_od_dir = f"{cache_dir}/od_{args['corruption']}_n{n_ood_sample}_{args['severity']}_{random_seeds[1]}.pkl"
 
     # init ProjNorm
-    save_dir_path = f"./checkpoints/{type}/{args['arch']}"
+    save_dir_path = f"./checkpoints/{data_type}/{args['arch']}"
 
     base_model = torch.load('{}/base_model.pt'.format(save_dir_path), map_location=device)
     model = nethook.InstrumentedModel(base_model).eval().to(device)
@@ -108,7 +109,7 @@ if __name__ == "__main__":
 
     print(f'{metric} distance:', dist.item())
 
-    dataset = os.path.basename(args['cifar_data_path'])
+    dataset = os.path.basename(args['data_path'])
     corruption = args['corruption']
     result_dir = f"results/{dataset}/{args['arch']}/{args['metric']}_{n_ood_sample}/{args['pooling']}/{layer}/{corruption}.json"
     print(result_dir, os.path.dirname(result_dir), os.path.basename(result_dir))
