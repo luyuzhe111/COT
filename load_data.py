@@ -4,10 +4,12 @@ import torchvision.datasets as datasets
 import os
 import numpy as np
 from torch.utils.data.sampler import SubsetRandomSampler
+from tiny_imagenet import *
 
-def load_cifar_image(corruption_type,
-                       clean_cifar_path,
-                       corruption_cifar_path,
+
+def load_image_dataset(corruption_type,
+                       clean_path,
+                       corruption_path,
                        corruption_severity=0,
                        datatype='test',
                        num_samples=50000,
@@ -29,23 +31,32 @@ def load_cifar_image(corruption_type,
     ])
 
     if type == "cifar-10":
-        dataset = datasets.CIFAR10(clean_cifar_path,
-                               train=training_flag,
-                               transform=transform,
-                               download=True)
-    else:
-        dataset = datasets.CIFAR100(clean_cifar_path,
+        dataset = datasets.CIFAR10(clean_path,
                                    train=training_flag,
                                    transform=transform,
                                    download=True)
+    elif type == "cifar-100":
+        dataset = datasets.CIFAR100(clean_path,
+                                    train=training_flag,
+                                    transform=transform,
+                                    download=True)
+    else:
+        if training_flag:
+            dataset = TrainTinyImageNetDataset(clean_path, transform=transform)
+        else:
+            dataset = TestTinyImageNetDataset(clean_path, transform=transform)
 
     if corruption_severity > 0:
-        assert not training_flag
-        path_images = os.path.join(corruption_cifar_path, corruption_type + '.npy')
-        path_labels = os.path.join(corruption_cifar_path, 'labels.npy')
-        dataset.data = np.load(path_images)[(corruption_severity - 1) * 10000:corruption_severity * 10000]
-        dataset.targets = list(np.load(path_labels)[(corruption_severity - 1) * 10000:corruption_severity * 10000])
-        dataset.targets = [int(item) for item in dataset.targets]
+        if type != 'tiny-imagenet':
+            assert not training_flag
+            path_images = os.path.join(corruption_path, corruption_type + '.npy')
+            path_labels = os.path.join(corruption_path, 'labels.npy')
+            dataset.data = np.load(path_images)[(corruption_severity - 1) * 10000:corruption_severity * 10000]
+            dataset.targets = list(np.load(path_labels)[(corruption_severity - 1) * 10000:corruption_severity * 10000])
+            dataset.targets = [int(item) for item in dataset.targets]
+        else:
+            dataset = TinyImageNetCorruptedDataset(corruption_path, corruption_type, corruption_severity)
+
 
     # randomly permute data
     torch.manual_seed(seed)
@@ -55,7 +66,7 @@ def load_cifar_image(corruption_type,
     dataset.data = dataset.data[index_permute]
     dataset.targets = np.array([int(item) for item in dataset.targets])
     dataset.targets = dataset.targets[index_permute].tolist()
-    
+
     if training_flag:
         train_inds = index_permute[:40000]
         val_inds = index_permute[40000:]
@@ -67,7 +78,7 @@ def load_cifar_image(corruption_type,
         print("valid size:", len(val_set))
 
         return train_set, val_set
-    
+
     else:
         # randomly subsample data
         torch.manual_seed(seed)

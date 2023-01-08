@@ -20,8 +20,9 @@ def main():
     parser = argparse.ArgumentParser(description='UWD.')
     parser.add_argument('--arch', default='resnet18', type=str)
     parser.add_argument('--metric', default='mini-wd', type=str)
-    parser.add_argument('--cifar_data_path', default='./data/CIFAR-10', type=str)
-    parser.add_argument('--cifar_corruption_path', default='./data/CIFAR-10-C/numpy_format', type=str)
+    parser.add_argument('--data_path', default='./data/CIFAR-10', type=str)
+    parser.add_argument('--corruption_path', default='./data/CIFAR-10-C/numpy_format', type=str)
+    parser.add_argument('--data_type', default='cifar-10', type=str)
     parser.add_argument('--corruption', default='snow', type=str)
     parser.add_argument('--severity', default=1, type=int)
     parser.add_argument('--ref', default='val', type=str)
@@ -44,54 +45,54 @@ def main():
 
     n_ood_sample = args['num_ood_samples']
     n_ref_sample = args['num_ref_samples']
-    
-    type = "cifar-100" if args['num_classes'] == 100 else "cifar-10"
+
+    data_type = args['data_type']
 
     if args['ref'] == 'val':
-        _, val_set = load_cifar_image(corruption_type='clean',
-                                    clean_cifar_path=args['cifar_data_path'],
-                                    corruption_cifar_path=args['cifar_corruption_path'],
-                                    corruption_severity=0,
-                                    num_samples=n_ref_sample,
-                                    datatype='train',
-                                    type=type,
-                                    seed=args['seed']
-                                    )
+        _, val_set = load_image_dataset(corruption_type='clean',
+                                        clean_path=args['data_path'],
+                                        corruption_path=args['corruption_path'],
+                                        corruption_severity=0,
+                                        num_samples=n_ref_sample,
+                                        datatype='train',
+                                        type=data_type,
+                                        seed=args['seed']
+                                        )
     else:
-        val_set = load_cifar_image(corruption_type='clean',
-                                    clean_cifar_path=args['cifar_data_path'],
-                                    corruption_cifar_path=args['cifar_corruption_path'],
-                                    corruption_severity=0,
-                                    num_samples=10000,
-                                    datatype='test',
-                                    type=type,
-                                    seed=args['seed']
-                                    )
+        val_set = load_image_dataset(corruption_type='clean',
+                                        clean_path=args['data_path'],
+                                        corruption_path=args['corruption_path'],
+                                        corruption_severity=0,
+                                        num_samples=args['num_ood_samples'],
+                                        datatype='test',
+                                        type=data_type,
+                                        seed=args['seed']
+                                        )
 
-    
-    val_iid_loader = torch.utils.data.DataLoader(val_set, batch_size=128, shuffle=False)
 
-    valset_ood = load_cifar_image(corruption_type=args['corruption'],
-                                    clean_cifar_path=args['cifar_data_path'],
-                                    corruption_cifar_path=args['cifar_corruption_path'],
+    val_iid_loader = torch.utils.data.DataLoader(val_set, batch_size=args['batch_size'], shuffle=False)
+
+    valset_ood = load_image_dataset(corruption_type=args['corruption'],
+                                    clean_path=args['data_path'],
+                                    corruption_path=args['corruption_path'],
                                     corruption_severity=args['severity'],
                                     datatype='test',
                                     num_samples=n_ood_sample,
-                                    type=type
+                                    type=data_type
                                   )
-    
+
     val_ood_loader = torch.utils.data.DataLoader(valset_ood, batch_size=128, shuffle=True)
-    
-    cache_dir = f"./cache/{type}/{args['arch']}_{model_seed}"
+
+    cache_dir = f"./cache/{data_type}/{args['arch']}_{model_seed}"
     os.makedirs(cache_dir, exist_ok=True)
     cache_id_dir = f"{cache_dir}/id_{model_seed}_{args['ref']}_d{args['seed']}.pkl"
     cache_od_dir = f"{cache_dir}/od_{model_seed}_{args['corruption']}-{args['severity']}_n{n_ood_sample}.pkl"
 
-    save_dir_path = f"./checkpoints/{type}/{args['arch']}"
+    save_dir_path = f"./checkpoints/{data_type}/{args['arch']}"
 
     base_model = torch.load(f"{save_dir_path}/base_model_{args['model_seed']}.pt", map_location=device)
     model = base_model.eval()
-        
+
     iid_acts, iid_preds, iid_tars = gather_outputs(model, val_iid_loader, device, cache_id_dir)
     ood_acts, ood_preds, ood_tars = gather_outputs(model, val_ood_loader, device, cache_od_dir)
 
@@ -112,9 +113,9 @@ def main():
         rx = (xx.diag().unsqueeze(0).expand_as(xx))
         ry = (yy.diag().unsqueeze(0).expand_as(yy))
 
-        dxx = rx.t() + rx - 2. * xx 
-        dyy = ry.t() + ry - 2. * yy 
-        dxy = rx.t() + ry - 2. * zz 
+        dxx = rx.t() + rx - 2. * xx
+        dyy = ry.t() + ry - 2. * yy
+        dxy = rx.t() + ry - 2. * zz
 
         a = 100
         XX = torch.exp(-0.5*dxx/a)
@@ -122,7 +123,7 @@ def main():
         XY = torch.exp(-0.5*dxy/a)
 
         dist = torch.mean(XX + YY - 2. * XY)
-    
+
     elif metric == 'pseudo':
         ood_pred_counts = Counter(ood_preds.tolist())
         expected_samples = 10000 // n_class
@@ -140,9 +141,9 @@ def main():
         G0 = ot.emd(weights, weights, M, numItermax=10**8)
         source_iid_inds = G0.nonzero()[:, 0]
         matched_ood_inds = G0.nonzero()[:, 1]
-        
+
         dist = M[source_iid_inds, matched_ood_inds].mean()
-    
+
     elif metric == 'sinkhorn':
         dist = ot.bregman.empirical_sinkhorn2(iid_acts, ood_acts, reg=args['reg'])
 
@@ -150,7 +151,7 @@ def main():
         n_class = args['num_classes']
         n_slice = n_class * 100
         proj = torch.as_tensor(ot.sliced.get_random_projections(n_class, n_slice, seed=0)).to(device=device, dtype=torch.float)
-        
+
         slice_batch_size = 1000
         n_batch = math.ceil(n_slice // slice_batch_size)
         dist = 0
@@ -163,32 +164,32 @@ def main():
 
             p_interp, q_interp = interpolate(iid_sorted_batch, ood_sorted_batch)
             dist += torch.pow( (p_interp - q_interp), 2 ).sum(0).sum()
-        
+
         dist /= n_slice
-    
+
     elif metric == 'cwd':
         p = torch.sort(iid_acts, dim=0)[0]
         q = torch.sort(ood_acts, dim=0)[0]
 
         p_interp, q_interp = interpolate(p, q)
-        
+
         dist = torch.pow( p_interp - q_interp, 2).sum(0).mean()
-    
+
     elif metric == 'score-wd':
         softmax = nn.Softmax(dim=1)
         iid_scores = torch.sort( torch.sum(softmax(iid_acts) * torch.log2(softmax(iid_acts)), dim=1) )[0]
         ood_scores = torch.sort( torch.sum(softmax(ood_acts) * torch.log2(softmax(ood_acts)), dim=1) )[0]
-        
+
         dist = torch.pow(iid_scores - ood_scores, 2).mean()
 
     print(f'{metric} distance:', dist.item())
     print(f'matching rate:', match_rate)
 
-    dataset = os.path.basename(args['cifar_data_path'])
+    dataset = os.path.basename(args['data_path'])
     corruption = args['corruption']
 
     result_dir = f"results/{dataset}/{args['arch']}_{model_seed}/{args['metric']}_{args['ref']}_{n_ood_sample}/{corruption}.json"
-    
+
     print(result_dir, os.path.dirname(result_dir), os.path.basename(result_dir))
     os.makedirs(os.path.dirname(result_dir), exist_ok=True)
 

@@ -9,8 +9,9 @@ import json
 """# Configuration"""
 parser = argparse.ArgumentParser(description='ProjNorm.')
 parser.add_argument('--arch', default='resnet18', type=str)
-parser.add_argument('--cifar_data_path', default='./data/CIFAR-10', type=str)
-parser.add_argument('--cifar_corruption_path', default='./data/CIFAR-10-C', type=str)
+parser.add_argument('--data_path', default='./data/CIFAR-10', type=str)
+parser.add_argument('--corruption_path', default='./data/CIFAR-10-C', type=str)
+parser.add_argument('--data_type', default='cifar-10', type=str)
 parser.add_argument('--corruption', default='snow', type=str)
 parser.add_argument('--severity', default=5, type=int)
 parser.add_argument('--pseudo_iters', default=1, type=int)
@@ -32,7 +33,7 @@ if __name__ == "__main__":
 
     print('random seeds:', random_seeds)
     
-    type = "cifar-100" if args['num_classes'] == 100 else "cifar-10"
+    data_type = args['data_type']
 
     n_ood_sample = args['num_ood_samples']
 
@@ -41,19 +42,19 @@ if __name__ == "__main__":
     print('num of ood samples:', n_ood_sample)
     print('pseudo iters:', args['pseudo_iters'])
 
-    valset_ood = load_cifar_image(corruption_type=args['corruption'],
-                                  clean_cifar_path=args['cifar_data_path'],
-                                  corruption_cifar_path=args['cifar_corruption_path'],
-                                  corruption_severity=args['severity'],
-                                  datatype='test',
-                                  num_samples=n_ood_sample,
-                                  type=type,
-                                  seed=random_seeds[1])
-    
+    valset_ood = load_image_dataset(corruption_type=args['corruption'],
+                                      clean_path=args['data_path'],
+                                      corruption_path=args['corruption_path'],
+                                      corruption_severity=args['severity'],
+                                      datatype='test',
+                                      num_samples=n_ood_sample,
+                                      type=data_type,
+                                      seed=random_seeds[1])
+
     val_ood_loader = torch.utils.data.DataLoader(valset_ood, batch_size=args['batch_size'], shuffle=True)
 
     # init ProjNorm
-    save_dir_path = f"./checkpoints/{type}/{args['arch']}"
+    save_dir_path = f"./checkpoints/{data_type}/{args['arch']}"
 
     base_model = torch.load(f"{save_dir_path}/base_model_{args['model_seed']}.pt")
     base_model.eval()
@@ -69,7 +70,7 @@ if __name__ == "__main__":
         ref_model = torch.load(f"{save_dir_path}/ref_model_{args['model_seed'].split('_')[0]}_{args['pseudo_iters']}.pt")
         ref_model.eval()
         PN.id_model = ref_model
-        
+
     ################ train ood pseudo model ################
     if args['arch'] == 'resnet18':
         pseudo_model = ResNet18(num_classes=args['num_classes'], seed=args['seed']).cuda()
@@ -94,7 +95,7 @@ if __name__ == "__main__":
     print('(out-of-distribution) test error: ', test_error_ood)
     print('========finished========')
 
-    dataset = os.path.basename(args['cifar_data_path'])
+    dataset = os.path.basename(args['data_path'])
     corruption = args['corruption']
     result_dir = f"results/{dataset}/{args['arch']}_{args['model_seed']}/projnorm-{iid_model}_{n_ood_sample}/{corruption}.json"
     print(result_dir, os.path.dirname(result_dir), os.path.basename(result_dir))

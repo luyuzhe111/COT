@@ -6,8 +6,9 @@ from utils import baseline_evaluation, compute_t, compute_t_vec
 """# Configuration"""
 parser = argparse.ArgumentParser(description='ProjNorm.')
 parser.add_argument('--arch', default='resnet18', type=str)
-parser.add_argument('--cifar_data_path', default='./data/CIFAR-10', type=str)
-parser.add_argument('--cifar_corruption_path', default='./data/CIFAR-10-C', type=str)
+parser.add_argument('--data_path', default='./data/CIFAR-10', type=str)
+parser.add_argument('--corruption_path', default='./data/CIFAR-10-C', type=str)
+parser.add_argument('--data_type', default='cifar-10', type=str)
 parser.add_argument('--corruption', default='snow', type=str)
 parser.add_argument('--severity', default=5, type=int)
 parser.add_argument('--pseudo_iters', default=50, type=int)
@@ -27,36 +28,35 @@ if __name__ == "__main__":
     model_seed = args['model_seed']
     n_ood_sample = args['num_ood_samples']
 
-    type = "cifar-100" if args['num_classes'] == 100 else "cifar-10"
+    data_type = args['data_type']
 
-    trainset, valset = load_cifar_image(corruption_type='clean',
-                                  clean_cifar_path=args['cifar_data_path'],
-                                  corruption_cifar_path=args['cifar_corruption_path'],
-                                  corruption_severity=0,
-                                  datatype='train',
-                                  type=type)
-    
+    trainset, valset = load_image_dataset(corruption_type='clean',
+                                          clean_path=args['data_path'],
+                                          corruption_path=args['corruption_path'],
+                                          corruption_severity=0,
+                                          datatype='train',
+                                          type=type)
+
     val_iid_loader = torch.utils.data.DataLoader(valset, batch_size=args['batch_size'], shuffle=False)
 
-    valset_ood = load_cifar_image(corruption_type=args['corruption'],
-                                    clean_cifar_path=args['cifar_data_path'],
-                                    corruption_cifar_path=args['cifar_corruption_path'],
+    valset_ood = load_image_dataset(corruption_type=args['corruption'],
+                                    clean_path=args['data_path'],
+                                    corruption_path=args['corruption_path'],
                                     corruption_severity=args['severity'],
-                                    num_samples=n_ood_sample,
                                     datatype='test',
-                                    type=type)
-    
+                                    type=data_type)
+
     val_ood_loader = torch.utils.data.DataLoader(valset_ood, batch_size=args['batch_size'], shuffle=False)
 
-    save_dir_path = f"./checkpoints/{type}/{args['arch']}"
+    save_dir_path = f"./checkpoints/{data_type}/{args['arch']}"
     base_model = torch.load(f"{save_dir_path}/base_model_{model_seed}.pt")
     base_model.eval()
 
     corruption = args['corruption']
     severity = args['severity']
-    result_dir = f"results/{os.path.basename(args['cifar_data_path'])}/{args['arch']}_{model_seed}"
-    
-    cache_dir = f"cache/{type}/{args['arch']}_{model_seed}/iid_result.json"
+    result_dir = f"results/{os.path.basename(args['data_path'])}/{args['arch']}_{model_seed}"
+
+    cache_dir = f"cache/{data_type}/{args['arch']}_{model_seed}/iid_result.json"
     if os.path.exists(cache_dir):
         with open(cache_dir, 'r') as f:
             data = json.load(f)
@@ -69,8 +69,8 @@ if __name__ == "__main__":
             print('compute confidence threshold...')
             t = compute_t(base_model, val_iid_loader).item()
             t_vec = compute_t_vec(base_model, val_iid_loader)
-            json.dump({'t': t, 't_vec': t_vec.tolist()}, f) 
-        
+            json.dump({'t': t, 't_vec': t_vec.tolist()}, f)
+
     print(f"===========model={args['arch']}, type={args['corruption']}, severity={args['severity']}===========")
     metrics, test_loss_ood, test_acc_ood = \
         baseline_evaluation(net=base_model, testloader=val_ood_loader, val_loader=val_iid_loader, t=t, t_vec=t_vec)

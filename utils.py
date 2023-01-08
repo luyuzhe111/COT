@@ -89,7 +89,7 @@ def compute_t_vec(net, iid_loader):
             _, predicted = outputs.max(1)
             misclassified += targets.size(0) - predicted.eq(targets).sum().item()
             res.append(outputs)
-    
+
     logits = torch.cat(res)
 
     sorted_logits = torch.sort(logits, dim=0)[0]
@@ -227,7 +227,7 @@ class Interp1d(torch.autograd.Function):
 
         # the squeeze is because torch.searchsorted does accept either a nd with
         # matching shapes for x and xnew or a 1d vector for x. Here we would
-        # have (1,len) for x sometimes 
+        # have (1,len) for x sometimes
         torch.searchsorted(v['x'].contiguous().squeeze(),
                            v['xnew'].contiguous(), out=ind)
 
@@ -299,15 +299,15 @@ def interpolate(p, q):
     # p, q are of shape N x d
     if len(q) == len(p):
         return p, q
-    
+
     if len(p) > len(q):
         ref, x = q, p
 
     else:
         ref, x = p, q
-    
+
     device = x.device
-    
+
     x_domain = torch.linspace(0, 1, x.shape[0]).repeat(x.shape[1], 1).to(device)
     ref_domain = torch.linspace(0, 1, ref.shape[0]).repeat(ref.shape[1], 1).to(device)
     x_interp_range = interp1d(x_domain, x.T, ref_domain).T
