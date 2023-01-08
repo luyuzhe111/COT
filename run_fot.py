@@ -2,6 +2,7 @@ import argparse
 from projnorm import *
 from load_data import *
 from model import ResNet18, ResNet50, VGG11
+from collections import Counter
 from utils import gather_outputs, interpolate
 import numpy as np
 import json
@@ -94,6 +95,9 @@ def main():
     iid_acts, iid_preds, iid_tars = gather_outputs(model, val_iid_loader, device, cache_id_dir)
     ood_acts, ood_preds, ood_tars = gather_outputs(model, val_ood_loader, device, cache_od_dir)
 
+    print('iid labels: ', Counter(iid_tars.tolist()))
+    print('ood labels: ', Counter(ood_tars.tolist()))
+
     iid_acc = ( (iid_preds == iid_tars).sum() / len(iid_tars) ).item()
     ood_acc = ( (ood_preds == ood_tars).sum() / len(ood_tars) ).item()
 
@@ -101,6 +105,7 @@ def main():
     print('out-distribution acc:', ood_acc)
 
     metric = args['metric']
+    match_rate = 0
 
     if metric == 'mmd':
         xx, yy, zz = torch.mm(iid_acts, iid_acts.t()), torch.mm(ood_acts, ood_acts.t()), torch.mm(iid_acts, ood_acts.t())
@@ -118,10 +123,21 @@ def main():
 
         dist = torch.mean(XX + YY - 2. * XY)
     
+    elif metric == 'pseudo':
+        counts = Counter(ood_preds.tolist())
+        ood_pred_dist = torch.as_tensor([counts.get(i, 0) for i in range(args['num_classes'])])
+        ref_label_dist = torch.as_tensor([10000 // args['num_classes']] *  args['num_classes'])
+
+        dist = torch.abs(ood_pred_dist - ref_label_dist).sum() / len(ood_preds.tolist()) / 2
+
     elif metric == 'wd':
         M = ot.dist(iid_acts, ood_acts)
         weights = torch.as_tensor([]).to(device)
-        dist = ot.emd2(weights, weights, M, numItermax=10**8)
+        G0 = ot.emd(weights, weights, M, numItermax=10**8)
+        source_iid_inds = G0.nonzero()[:, 0]
+        matched_ood_inds = G0.nonzero()[:, 1]
+        
+        dist = M[source_iid_inds, matched_ood_inds].mean()
     
     elif metric == 'sinkhorn':
         dist = ot.bregman.empirical_sinkhorn2(iid_acts, ood_acts, reg=args['reg'])
@@ -162,6 +178,7 @@ def main():
         dist = torch.pow(iid_scores - ood_scores, 2).mean()
 
     print(f'{metric} distance:', dist.item())
+    print(f'matching rate:', match_rate)
 
     dataset = os.path.basename(args['cifar_data_path'])
     corruption = args['corruption']
@@ -184,7 +201,8 @@ def main():
         'metric': float(dist),
         'ref': args['metric'],
         'acc': float(ood_acc),
-        'error': 1 - ood_acc
+        'error': iid_acc - ood_acc,
+        'match_rate': match_rate
     })
 
     with open(result_dir, 'w') as f:
