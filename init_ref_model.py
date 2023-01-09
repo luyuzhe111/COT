@@ -79,18 +79,25 @@ if __name__ == "__main__":
     # init and train base model
     if args['arch'] == 'resnet18':
         base_model = ResNet18(num_classes=args['num_classes'], seed=args['seed']).cuda()
+        base_model_alternate = ResNet18(num_classes=args['num_classes'], seed=114514).cuda()
     elif args['arch'] == 'resnet50':
         base_model = ResNet50(num_classes=args['num_classes'], seed=args['seed']).cuda()
+        base_model_alternate = ResNet50(num_classes=args['num_classes'], seed=114514).cuda()
     elif args['arch'] == 'vgg11':
         base_model = VGG11(num_classes=args['num_classes'], seed=args['seed']).cuda()
+        base_model_alternate = VGG11(num_classes=args['num_classes'], seed=114514).cuda()
     else:
         raise ValueError('incorrect model name')
 
     print('begin training...')
     base_model = train(base_model, trainloader)
+    base_model_alternate = train(base_model_alternate, trainloader)
     base_model.eval()
+    base_model_alternate.eval()
     torch.save(base_model, f"{save_dir_path}/base_model_{args['model_seed']}.pt")
+    torch.save(base_model_alternate, f"{save_dir_path}/base_model_alt.pt")
     print('base model saved to', f"{save_dir_path}/base_model_{args['model_seed']}.pt")
+    print('base model alternate saved to', f"{save_dir_path}/base_model_alt.pt")
 
     # init ProjNorm
     PN = ProjNorm(base_model=base_model)

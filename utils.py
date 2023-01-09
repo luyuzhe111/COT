@@ -24,18 +24,21 @@ def evaluation(net, testloader):
     return test_loss / total, 100. * correct / total
 
 
-def baseline_evaluation(net, testloader, val_loader, t, t_vec):
+def baseline_evaluation(net, testloader, val_loader, t, t_vec, net2):
     net.eval()
+    net2.eval()
     criterion = nn.CrossEntropyLoss()
-    metrics = torch.tensor([0.0] * 3)
+    metrics = torch.tensor([0.0] * 4)
     test_loss = 0
     correct = 0
     total = 0
+
     print('compute baselines...')
     with torch.no_grad():
         for _, (inputs, targets) in enumerate(tqdm(testloader)):
             inputs, targets = inputs.cuda(), targets.cuda()
             outputs = net(inputs)
+            outputs2 = net2(inputs)
 
             # ConfScore
             softmax = nn.Softmax(dim=1)
@@ -55,10 +58,15 @@ def baseline_evaluation(net, testloader, val_loader, t, t_vec):
             loss = criterion(outputs, targets)
             test_loss += loss.item() * inputs.size(0)
             _, predicted = outputs.max(1)
+            _, predicted2 = outputs2.max(1)
             correct += predicted.eq(targets).sum().item()
             total += targets.size(0)
-    
+
+            # AgreeScore
+            metrics[3] += predicted.eq(predicted2).sum().item()
+
     return metrics / total, test_loss / total, 100. * correct / total
+
 
 def compute_t(net, iid_loader):
     net.eval()
