@@ -30,12 +30,12 @@ if __name__ == "__main__":
 
     data_type = args['data_type']
 
-    trainset, valset = load_image_dataset(corruption_type='clean',
-                                          clean_path=args['data_path'],
-                                          corruption_path=args['corruption_path'],
-                                          corruption_severity=0,
-                                          datatype='train',
-                                          type=type)
+    _, valset = load_image_dataset(corruption_type='clean',
+                                   clean_path=args['data_path'],
+                                   corruption_path=args['corruption_path'],
+                                   corruption_severity=0,
+                                   datatype='train',
+                                   type=type)
 
     val_iid_loader = torch.utils.data.DataLoader(valset, batch_size=args['batch_size'], shuffle=False)
 

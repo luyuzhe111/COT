@@ -55,7 +55,7 @@ def load_image_dataset(corruption_type,
             dataset.targets = list(np.load(path_labels)[(corruption_severity - 1) * 10000:corruption_severity * 10000])
             dataset.targets = [int(item) for item in dataset.targets]
         else:
-            dataset = TinyImageNetCorruptedDataset(corruption_path, corruption_type, corruption_severity)
+            dataset = TinyImageNetCorruptedDataset(corruption_path, corruption_type, corruption_severity, transform=transform)
 
 
     # randomly permute data
@@ -67,9 +67,10 @@ def load_image_dataset(corruption_type,
     dataset.targets = np.array([int(item) for item in dataset.targets])
     dataset.targets = dataset.targets[index_permute].tolist()
 
+    train_size = max(40000, int(number_samples * 0.8))
     if training_flag:
-        train_inds = index_permute[:40000]
-        val_inds = index_permute[40000:]
+        train_inds = index_permute[:train_size]
+        val_inds = index_permute[train_size:]
 
         train_set = torch.utils.data.Subset(dataset, train_inds)
         val_set = torch.utils.data.Subset(dataset, val_inds)
