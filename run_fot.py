@@ -15,6 +15,7 @@ import ot
 import ot.dr
 import torch.nn as nn
 
+
 def main():
     """# Configuration"""
     parser = argparse.ArgumentParser(description='UWD.')
@@ -45,6 +46,7 @@ def main():
 
     n_ood_sample = args['num_ood_samples']
     n_ref_sample = args['num_ref_samples']
+    n_class = args['num_classes']
 
     data_type = args['data_type']
 
@@ -60,15 +62,14 @@ def main():
                                         )
     else:
         val_set = load_image_dataset(corruption_type='clean',
-                                        clean_path=args['data_path'],
-                                        corruption_path=args['corruption_path'],
-                                        corruption_severity=0,
-                                        num_samples=args['num_ood_samples'],
-                                        datatype='test',
-                                        type=data_type,
-                                        seed=args['seed']
-                                        )
-
+                                     clean_path=args['data_path'],
+                                     corruption_path=args['corruption_path'],
+                                     corruption_severity=0,
+                                     num_samples=args['num_ood_samples'],
+                                     datatype='test',
+                                     type=data_type,
+                                     seed=args['seed']
+                                     )
 
     val_iid_loader = torch.utils.data.DataLoader(val_set, batch_size=args['batch_size'], shuffle=False)
 
@@ -79,7 +80,7 @@ def main():
                                     datatype='test',
                                     num_samples=n_ood_sample,
                                     type=data_type
-                                  )
+                                    )
 
     val_ood_loader = torch.utils.data.DataLoader(valset_ood, batch_size=128, shuffle=True)
 
@@ -212,6 +213,7 @@ def main():
 
     with open(result_dir, 'w') as f:
         json.dump(data, f)
+
 
 if __name__ == "__main__":
     main()

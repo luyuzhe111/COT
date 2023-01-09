@@ -17,6 +17,7 @@ parser.add_argument('--num_classes', default=10, type=int)
 parser.add_argument('--batch_size', default=128, type=int)
 parser.add_argument('--lr', default=0.001, type=float)
 parser.add_argument('--train_epoch', default=2, type=int)
+parser.add_argument('--model_seed', default="1", type=str)
 parser.add_argument('--seed', default=1, type=int)
 args = vars(parser.parse_args())
 
@@ -64,12 +65,12 @@ if __name__ == "__main__":
         os.makedirs(save_dir_path)
 
     # setup train/val_iid loaders
-    trainset = load_image_dataset(corruption_type='clean',
-                                  clean_path=args['data_path'],
-                                  corruption_path=args['corruption_path'],
-                                  corruption_severity=0,
-                                  type=data_type,
-                                  datatype='train')
+    trainset, _ = load_image_dataset(corruption_type='clean',
+                                     clean_path=args['data_path'],
+                                     corruption_path=args['corruption_path'],
+                                     corruption_severity=0,
+                                     type=data_type,
+                                     datatype='train')
     
     trainloader = torch.utils.data.DataLoader(trainset,
                                               batch_size=args['batch_size'],
@@ -78,18 +79,25 @@ if __name__ == "__main__":
     # init and train base model
     if args['arch'] == 'resnet18':
         base_model = ResNet18(num_classes=args['num_classes'], seed=args['seed']).cuda()
+        base_model_alternate = ResNet18(num_classes=args['num_classes'], seed=114514).cuda()
     elif args['arch'] == 'resnet50':
         base_model = ResNet50(num_classes=args['num_classes'], seed=args['seed']).cuda()
+        base_model_alternate = ResNet50(num_classes=args['num_classes'], seed=114514).cuda()
     elif args['arch'] == 'vgg11':
         base_model = VGG11(num_classes=args['num_classes'], seed=args['seed']).cuda()
+        base_model_alternate = VGG11(num_classes=args['num_classes'], seed=114514).cuda()
     else:
         raise ValueError('incorrect model name')
 
     print('begin training...')
     base_model = train(base_model, trainloader)
+    base_model_alternate = train(base_model_alternate, trainloader)
     base_model.eval()
-    torch.save(base_model, '{}/base_model.pt'.format(save_dir_path))
-    print('base model saved to', '{}/base_model.pt'.format(save_dir_path))
+    base_model_alternate.eval()
+    torch.save(base_model, f"{save_dir_path}/base_model_{args['model_seed']}.pt")
+    torch.save(base_model_alternate, f"{save_dir_path}/base_model_alt.pt")
+    print('base model saved to', f"{save_dir_path}/base_model_{args['model_seed']}.pt")
+    print('base model alternate saved to', f"{save_dir_path}/base_model_alt.pt")
 
     # init ProjNorm
     PN = ProjNorm(base_model=base_model)
@@ -109,7 +117,7 @@ if __name__ == "__main__":
                         lr=args['lr'],
                         pseudo_iters=args['pseudo_iters'])
     
-    torch.save(PN.reference_model.eval(), '{}/ref_model.pt'.format(save_dir_path))
-    print('reference model saved to', '{}/ref_model.pt'.format(save_dir_path))
+    torch.save(PN.reference_model.eval(), f"{save_dir_path}/ref_model_{args['model_seed'].split('_')[0]}_{args['pseudo_iters']}.pt")
+    print('reference model saved to', f"{save_dir_path}/ref_model_{args['model_seed'].split('_')[0]}_{args['pseudo_iters']}.pt")
 
     print('========finished========')
