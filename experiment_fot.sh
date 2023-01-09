@@ -11,7 +11,7 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metric="wd"
+metric="Pseudo"
 cifar_data_path="./data/CIFAR-100"
 cifar_corruption_path="./data/CIFAR-100-C"
 n_class=100

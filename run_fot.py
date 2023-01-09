@@ -124,11 +124,15 @@ def main():
         dist = torch.mean(XX + YY - 2. * XY)
 
     elif metric == 'pseudo':
-        counts = Counter(ood_preds.tolist())
-        ood_pred_dist = torch.as_tensor([counts.get(i, 0) for i in range(args['num_classes'])])
-        ref_label_dist = torch.as_tensor([10000 // args['num_classes']] *  args['num_classes'])
+        ood_pred_counts = Counter(ood_preds.tolist())
+        expected_samples = 10000 // n_class
+        ood_pred_dis = torch.as_tensor([ood_pred_counts.get(i, 0) / expected_samples for i in range(n_class)])
+        
+        val_pred_counts = Counter(iid_preds.tolist())
+        actual_samples = Counter(iid_tars.tolist())
+        val_label_dis = torch.as_tensor([val_pred_counts.get(i, 0) / actual_samples.get(i, 0) for i in range(n_class)])
 
-        dist = torch.abs(ood_pred_dist - ref_label_dist).sum() / len(ood_preds.tolist()) / 2
+        dist = torch.abs(ood_pred_dis - val_label_dis).sum() / n_class / 2 + (1 - iid_acc)
 
     elif metric == 'wd':
         M = ot.dist(iid_acts, ood_acts)
@@ -201,7 +205,7 @@ def main():
         'metric': float(dist),
         'ref': args['metric'],
         'acc': float(ood_acc),
-        'error': iid_acc - ood_acc,
+        'error': 1 - ood_acc,
         'match_rate': match_rate
     })
 
