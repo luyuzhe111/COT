@@ -15,6 +15,7 @@ import ot
 import ot.dr
 import torch.nn as nn
 
+
 def main():
     """# Configuration"""
     parser = argparse.ArgumentParser(description='UWD.')
@@ -45,6 +46,7 @@ def main():
 
     n_ood_sample = args['num_ood_samples']
     n_ref_sample = args['num_ref_samples']
+    n_class = args['num_classes']
 
     data_type = args['data_type']
 
@@ -211,6 +213,7 @@ def main():
 
     with open(result_dir, 'w') as f:
         json.dump(data, f)
+
 
 if __name__ == "__main__":
     main()
