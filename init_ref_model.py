@@ -51,6 +51,7 @@ def train(net, trainloader):
                       'Loss: %.3f | Acc: %.3f%% (%d/%d)| Lr: %.5f' % (
                           train_loss / (batch_idx + 1), 100. * correct / total, correct, total, current_lr))
             scheduler.step()
+
     net.eval()
 
     return net
@@ -58,8 +59,8 @@ def train(net, trainloader):
 
 if __name__ == "__main__":
     # save path
-    data_type = args['data_type']# "cifar-100" if args["num_classes"] == 100 else "cifar-10"
-
+    data_type = args['data_type']
+    
     save_dir_path = f"./checkpoints/{data_type}/{args['arch']}"
     if not os.path.exists(save_dir_path):
         os.makedirs(save_dir_path)

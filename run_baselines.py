@@ -35,7 +35,7 @@ if __name__ == "__main__":
                                    corruption_path=args['corruption_path'],
                                    corruption_severity=0,
                                    datatype='train',
-                                   type=type)
+                                   type=data_type)
 
     val_iid_loader = torch.utils.data.DataLoader(valset, batch_size=args['batch_size'], shuffle=False)
 
@@ -87,10 +87,10 @@ if __name__ == "__main__":
     print('Test Loss: ', test_loss_ood)
     print('(out-of-distribution) test acc: ', test_acc_ood)
     print('========Metrics========')
-    print('ConfScore: ', metrics[0])
+    print('ConfScore: ', 1 - metrics[0])
     print('Entropy: ', metrics[1])
     print('ATC: ', metrics[2])
-    print('AgreeScore: ', metrics[3])
+    print('AgreeScore: ', 1 - metrics[3])
     print('========Finished========')
 
     def save_json(result_dir, method, corruption, severity, ood_acc, ood_metric):
@@ -125,10 +125,10 @@ if __name__ == "__main__":
             with open(save_dir, 'w') as f:
                 json.dump(data, f)
     
-    save_json(result_dir, f"ConfScore_{args['ref']}_{n_ood_sample}", corruption, severity, test_acc_ood / 100, metrics[0] * -1)
+    save_json(result_dir, f"ConfScore_{args['ref']}_{n_ood_sample}", corruption, severity, test_acc_ood / 100, 1 - metrics[0])
     save_json(result_dir, f"Entropy_{args['ref']}_{n_ood_sample}", corruption, severity, test_acc_ood / 100, metrics[1])
     save_json(result_dir, f"ATC_{args['ref']}_{n_ood_sample}", corruption, severity, test_acc_ood / 100, metrics[2])
-    save_json(result_dir, f"AgreeScore_{args['ref']}_{n_ood_sample}", corruption, severity, test_acc_ood / 100, metrics[3])
+    save_json(result_dir, f"AgreeScore_{args['ref']}_{n_ood_sample}", corruption, severity, test_acc_ood / 100,  1 - metrics[3])
 
 
 

@@ -5,6 +5,7 @@ import os
 import numpy as np
 from torch.utils.data.sampler import SubsetRandomSampler
 from tiny_imagenet import *
+from torch_datasets.cifar20 import CIFAR20, get_coarse_labels
 
 
 def load_image_dataset(corruption_type,
@@ -35,11 +36,19 @@ def load_image_dataset(corruption_type,
                                    train=training_flag,
                                    transform=transform,
                                    download=True)
+    
+    elif type == "cifar-20":
+        dataset = CIFAR20(clean_path,
+                          train=training_flag,
+                          transform=transform,
+                          download=True)
+
     elif type == "cifar-100":
         dataset = datasets.CIFAR100(clean_path,
                                     train=training_flag,
                                     transform=transform,
                                     download=True)
+    
     else:
         if training_flag:
             dataset = TrainTinyImageNetDataset(clean_path, transform=transform)
@@ -47,14 +56,21 @@ def load_image_dataset(corruption_type,
             dataset = TestTinyImageNetDataset(clean_path, transform=transform)
 
     if corruption_severity > 0:
-        if type != 'tiny-imagenet':
-            assert not training_flag
+        assert not training_flag
+        if type == 'cifar-10' or type == 'cifar-100':
             path_images = os.path.join(corruption_path, corruption_type + '.npy')
             path_labels = os.path.join(corruption_path, 'labels.npy')
             dataset.data = np.load(path_images)[(corruption_severity - 1) * 10000:corruption_severity * 10000]
             dataset.targets = list(np.load(path_labels)[(corruption_severity - 1) * 10000:corruption_severity * 10000])
             dataset.targets = [int(item) for item in dataset.targets]
-        else:
+        elif type == 'cifar-20':
+            path_images = os.path.join(corruption_path, corruption_type + '.npy')
+            path_labels = os.path.join(corruption_path, 'labels.npy')
+            dataset.data = np.load(path_images)[(corruption_severity - 1) * 10000:corruption_severity * 10000]
+            dataset.targets = list(get_coarse_labels(np.load(path_labels))[(corruption_severity - 1) * 10000:corruption_severity * 10000])
+            dataset.targets = [int(item) for item in dataset.targets]
+
+        elif type == 'tiny-imagenet':
             dataset = TinyImageNetCorruptedDataset(corruption_path, corruption_type, corruption_severity, transform=transform)
 
 

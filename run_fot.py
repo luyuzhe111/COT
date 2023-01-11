@@ -142,6 +142,8 @@ def main():
         G0 = ot.emd(weights, weights, M, numItermax=10**8)
         source_iid_inds = G0.nonzero()[:, 0]
         matched_ood_inds = G0.nonzero()[:, 1]
+        
+        match_rate = (iid_tars == ood_preds[matched_ood_inds]).float().mean().item()
 
         dist = M[source_iid_inds, matched_ood_inds].mean()
 
