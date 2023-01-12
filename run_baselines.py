@@ -1,6 +1,7 @@
 import argparse
 import json
 from load_data import *
+from misc.temperature_scaling import calibrate
 from utils import baseline_evaluation, compute_t, compute_t_vec
 
 """# Configuration"""
@@ -54,6 +55,12 @@ if __name__ == "__main__":
     base_model.eval()
     base_model_alternate.eval()
 
+    temp_dir = f"{save_dir_path}/base_model_{args['model_seed']}_temp.json"
+    base_model = calibrate(base_model, val_iid_loader, temp_dir)
+
+    alt_temp_dir = f"{save_dir_path}/alt_model_{args['model_seed']}_temp.json"
+    base_model_alternate = calibrate(base_model_alternate, val_iid_loader, alt_temp_dir)
+
     corruption = args['corruption']
     severity = args['severity']
     result_dir = f"results/{os.path.basename(args['data_path'])}/{args['arch']}_{model_seed}"
@@ -100,30 +107,22 @@ if __name__ == "__main__":
         
         if not os.path.exists(save_dir):
             with open(save_dir, 'w') as f:
-                data = [{
-                    'corruption': corruption,
-                    'corruption level': severity,
-                    'method': method,
-                    'metric': ood_metric,
-                    'acc': float(ood_acc),
-                    'error': 1 - ood_acc
-                }]
-                json.dump(data, f)
-        else:
-            with open(save_dir, 'r') as f:
-                data = json.load(f)
-            
-            data.append({
-                'corruption': corruption,
-                'corruption level': severity,
-                'method': method,
-                'metric': ood_metric,
-                'acc': float(ood_acc),
-                'error': 1 - ood_acc
-            })
+                json.dump([], f)
 
-            with open(save_dir, 'w') as f:
-                json.dump(data, f)
+        with open(save_dir, 'r') as f:
+            data = json.load(f)
+        
+        data.append({
+            'corruption': corruption,
+            'corruption level': severity,
+            'method': method,
+            'metric': ood_metric,
+            'acc': float(ood_acc),
+            'error': 1 - ood_acc
+        })
+
+        with open(save_dir, 'w') as f:
+            json.dump(data, f)
     
     save_json(result_dir, f"ConfScore_{args['ref']}_{n_ood_sample}", corruption, severity, test_acc_ood / 100, 1 - metrics[0])
     save_json(result_dir, f"Entropy_{args['ref']}_{n_ood_sample}", corruption, severity, test_acc_ood / 100, metrics[1])

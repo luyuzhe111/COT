@@ -11,15 +11,15 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metric="wd"
-data_path="./data/CIFAR-20"
-data_type="cifar-20"
-corruption_path="./data/CIFAR-20-C"
-n_class=20
+metric="EMD"
+data_path="./data/CIFAR-100"
+data_type="cifar-100"
+corruption_path="./data/CIFAR-100-C"
+n_class=100
 num_ood_samples=10000
 n_ref_sample=50000
 batch_size=64
-arch=resnet50
+arch=resnet18
 ref="val"
 model_seed="1"
 

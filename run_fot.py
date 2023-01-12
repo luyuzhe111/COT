@@ -2,15 +2,16 @@ import argparse
 from projnorm import *
 from load_data import *
 from model import ResNet18, ResNet50, VGG11
+from misc.temperature_scaling import calibrate
 from collections import Counter
-from utils import gather_outputs, interpolate
+from utils import gather_outputs
+from misc.torch_interp import interpolate
 import numpy as np
 import json
 import torch
 import math
 import os
 from tqdm import tqdm
-from sklearn.decomposition import PCA, KernelPCA
 import ot
 import ot.dr
 import torch.nn as nn
@@ -60,16 +61,17 @@ def main():
                                         type=data_type,
                                         seed=args['seed']
                                         )
-    else:
-        val_set = load_image_dataset(corruption_type='clean',
-                                     clean_path=args['data_path'],
-                                     corruption_path=args['corruption_path'],
-                                     corruption_severity=0,
-                                     num_samples=args['num_ood_samples'],
-                                     datatype='test',
-                                     type=data_type,
-                                     seed=args['seed']
-                                     )
+    test_set = load_image_dataset(corruption_type='clean',
+                                    clean_path=args['data_path'],
+                                    corruption_path=args['corruption_path'],
+                                    corruption_severity=0,
+                                    num_samples=args['num_ood_samples'],
+                                    datatype='test',
+                                    type=data_type,
+                                    seed=args['seed']
+                                    )
+    
+    test_loader = torch.utils.data.DataLoader(test_set, batch_size=args['batch_size'], shuffle=False)
 
     val_iid_loader = torch.utils.data.DataLoader(val_set, batch_size=args['batch_size'], shuffle=False)
 
@@ -93,6 +95,9 @@ def main():
 
     base_model = torch.load(f"{save_dir_path}/base_model_{args['model_seed']}.pt", map_location=device)
     model = base_model.eval()
+
+    temp_dir = f"{save_dir_path}/base_model_{args['model_seed']}_temp.json"
+    model = calibrate(model, val_iid_loader, temp_dir)
 
     iid_acts, iid_preds, iid_tars = gather_outputs(model, val_iid_loader, device, cache_id_dir)
     ood_acts, ood_preds, ood_tars = gather_outputs(model, val_ood_loader, device, cache_od_dir)
@@ -123,21 +128,20 @@ def main():
         YY = torch.exp(-0.5*dyy/a)
         XY = torch.exp(-0.5*dxy/a)
 
-        dist = torch.mean(XX + YY - 2. * XY)
+        dist = torch.mean(XX + YY - 2. * XY)  
 
-    elif metric == 'pseudo':
-        ood_pred_counts = Counter(ood_preds.tolist())
-        expected_samples = 10000 // n_class
-        ood_pred_dis = torch.as_tensor([ood_pred_counts.get(i, 0) / expected_samples for i in range(n_class)])
+    elif metric == 'EMD':
+        act = nn.Softmax(dim=1)
         
-        val_pred_counts = Counter(iid_preds.tolist())
-        actual_samples = Counter(iid_tars.tolist())
-        val_label_dis = torch.as_tensor([val_pred_counts.get(i, 0) / actual_samples.get(i, 0) for i in range(n_class)])
+        # n_class_sample = len(iid_tars) // n_class
+        # ref_tars = torch.as_tensor(list(range(n_class)) * n_class_sample)
+        # ref_acts = nn.functional.one_hot(ref_tars)
 
-        dist = torch.abs(ood_pred_dis - val_label_dis).sum() / n_class / 2 + (1 - iid_acc)
-
-    elif metric == 'wd':
-        M = ot.dist(iid_acts, ood_acts)
+        # iid_acts, ood_acts = ref_acts, act(ood_acts)
+        iid_acts, ood_acts = nn.functional.one_hot(iid_tars), act(ood_acts)
+        
+        M = torch.from_numpy(ot.dist(iid_acts.cpu().numpy(), ood_acts.cpu().numpy(), metric='minkowski', p=1)).to(device)
+        
         weights = torch.as_tensor([]).to(device)
         G0 = ot.emd(weights, weights, M, numItermax=10**8)
         source_iid_inds = G0.nonzero()[:, 0]
@@ -145,7 +149,7 @@ def main():
         
         match_rate = (iid_tars == ood_preds[matched_ood_inds]).float().mean().item()
 
-        dist = M[source_iid_inds, matched_ood_inds].mean()
+        dist = M[source_iid_inds, matched_ood_inds].mean() / 2
 
     elif metric == 'sinkhorn':
         dist = ot.bregman.empirical_sinkhorn2(iid_acts, ood_acts, reg=args['reg'])
@@ -178,13 +182,6 @@ def main():
 
         dist = torch.pow( p_interp - q_interp, 2).sum(0).mean()
 
-    elif metric == 'score-wd':
-        softmax = nn.Softmax(dim=1)
-        iid_scores = torch.sort( torch.sum(softmax(iid_acts) * torch.log2(softmax(iid_acts)), dim=1) )[0]
-        ood_scores = torch.sort( torch.sum(softmax(ood_acts) * torch.log2(softmax(ood_acts)), dim=1) )[0]
-
-        dist = torch.pow(iid_scores - ood_scores, 2).mean()
-
     print(f'{metric} distance:', dist.item())
     print(f'matching rate:', match_rate)
 
@@ -210,7 +207,8 @@ def main():
         'ref': args['metric'],
         'acc': float(ood_acc),
         'error': 1 - ood_acc,
-        'match_rate': match_rate
+        'match_rate': match_rate,
+        'mismatch_rate': 1 - match_rate
     })
 
     with open(result_dir, 'w') as f:
