@@ -1,4 +1,4 @@
-import argparse
+run_fot.pyimport argparse
 from projnorm import *
 from load_data import *
 from model import ResNet18, ResNet50, VGG11
@@ -51,16 +51,16 @@ def main():
 
     data_type = args['data_type']
 
-    if args['ref'] == 'val':
-        _, val_set = load_image_dataset(corruption_type='clean',
-                                        clean_path=args['data_path'],
-                                        corruption_path=args['corruption_path'],
-                                        corruption_severity=0,
-                                        num_samples=n_ref_sample,
-                                        datatype='train',
-                                        type=data_type,
-                                        seed=args['seed']
-                                        )
+    _, val_set = load_image_dataset(corruption_type='clean',
+                                    clean_path=args['data_path'],
+                                    corruption_path=args['corruption_path'],
+                                    corruption_severity=0,
+                                    num_samples=n_ref_sample,
+                                    datatype='train',
+                                    type=data_type,
+                                    seed=args['seed']
+                                    )
+
     test_set = load_image_dataset(corruption_type='clean',
                                     clean_path=args['data_path'],
                                     corruption_path=args['corruption_path'],
@@ -133,11 +133,6 @@ def main():
     elif metric == 'EMD':
         act = nn.Softmax(dim=1)
         
-        # n_class_sample = len(iid_tars) // n_class
-        # ref_tars = torch.as_tensor(list(range(n_class)) * n_class_sample)
-        # ref_acts = nn.functional.one_hot(ref_tars)
-
-        # iid_acts, ood_acts = ref_acts, act(ood_acts)
         iid_acts, ood_acts = nn.functional.one_hot(iid_tars), act(ood_acts)
         
         M = torch.from_numpy(ot.dist(iid_acts.cpu().numpy(), ood_acts.cpu().numpy(), metric='minkowski', p=1)).to(device)
@@ -188,7 +183,7 @@ def main():
     dataset = os.path.basename(args['data_path'])
     corruption = args['corruption']
 
-    result_dir = f"results/{dataset}/{args['arch']}_{model_seed}/{args['metric']}_{args['ref']}_{n_ood_sample}/{corruption}.json"
+    result_dir = f"results/{dataset}/{args['arch']}_{model_seed}/{args['metric']}_{n_ood_sample}/{corruption}.json"
 
     print(result_dir, os.path.dirname(result_dir), os.path.basename(result_dir))
     os.makedirs(os.path.dirname(result_dir), exist_ok=True)

@@ -97,7 +97,7 @@ if __name__ == "__main__":
 
     dataset = os.path.basename(args['data_path'])
     corruption = args['corruption']
-    result_dir = f"results/{dataset}/{args['arch']}_{args['model_seed']}/projnorm-{iid_model}_{n_ood_sample}/{corruption}.json"
+    result_dir = f"results/{dataset}/{args['arch']}_{args['model_seed']}/ProjNorm-{iid_model}_{n_ood_sample}/{corruption}.json"
     print(result_dir, os.path.dirname(result_dir), os.path.basename(result_dir))
     os.makedirs(os.path.dirname(result_dir), exist_ok=True)
 
@@ -111,7 +111,7 @@ if __name__ == "__main__":
     data.append({
         'corruption': corruption,
         'corruption level': args['severity'],
-        'method': 'projnorm',
+        'method': 'ProjNorm',
         'metric': projnorm_value,
         'acc': test_error_ood / 100,
         'error': 1 - test_error_ood / 100

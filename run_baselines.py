@@ -124,10 +124,10 @@ if __name__ == "__main__":
         with open(save_dir, 'w') as f:
             json.dump(data, f)
     
-    save_json(result_dir, f"ConfScore_{args['ref']}_{n_ood_sample}", corruption, severity, test_acc_ood / 100, 1 - metrics[0])
-    save_json(result_dir, f"Entropy_{args['ref']}_{n_ood_sample}", corruption, severity, test_acc_ood / 100, metrics[1])
-    save_json(result_dir, f"ATC_{args['ref']}_{n_ood_sample}", corruption, severity, test_acc_ood / 100, metrics[2])
-    save_json(result_dir, f"AgreeScore_{args['ref']}_{n_ood_sample}", corruption, severity, test_acc_ood / 100,  1 - metrics[3])
+    save_json(result_dir, f"ConfScore_{n_ood_sample}", corruption, severity, test_acc_ood / 100, 1 - metrics[0])
+    save_json(result_dir, f"Entropy_{n_ood_sample}", corruption, severity, test_acc_ood / 100, metrics[1])
+    save_json(result_dir, f"ATC_{n_ood_sample}", corruption, severity, test_acc_ood / 100, metrics[2])
+    save_json(result_dir, f"AgreeScore_{n_ood_sample}", corruption, severity, test_acc_ood / 100,  1 - metrics[3])
 
 
 
