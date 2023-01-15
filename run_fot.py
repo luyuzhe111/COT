@@ -1,4 +1,4 @@
-run_fot.pyimport argparse
+import argparse
 from projnorm import *
 from load_data import *
 from model import ResNet18, ResNet50, VGG11

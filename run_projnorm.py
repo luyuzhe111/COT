@@ -37,8 +37,6 @@ if __name__ == "__main__":
 
     n_ood_sample = args['num_ood_samples']
 
-    args['pseudo_iters'] = n_ood_sample // 10
-
     print('num of ood samples:', n_ood_sample)
     print('pseudo iters:', args['pseudo_iters'])
 

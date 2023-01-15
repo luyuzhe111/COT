@@ -1,10 +1,9 @@
 import argparse
 import torchvision.models as models
 import torch.nn as nn
-
 from projnorm import *
 from load_data import *
-from model import ResNet18, ResNet50, VGG11
+from model import ResNet18, ResNet50, DenseNet121, VGG11, ViT_B_16
 
 """# Configuration"""
 parser = argparse.ArgumentParser(description='ProjNorm.')
@@ -22,7 +21,7 @@ parser.add_argument('--seed', default=1, type=int)
 args = vars(parser.parse_args())
 
 
-def train(net, trainloader):
+def train(net, trainloader, save_dir, seed, alt=False):
     net.train()
     optimizer = optim.SGD(net.parameters(), lr=args['lr'], momentum=0.9, weight_decay=0.0)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
@@ -52,6 +51,12 @@ def train(net, trainloader):
                           train_loss / (batch_idx + 1), 100. * correct / total, correct, total, current_lr))
             scheduler.step()
 
+        if epoch % 5 == 0:
+            if not alt:
+                torch.save(net, f"{save_dir}/base_model_{seed}_{epoch}.pt")
+            else:
+                torch.save(net, f"{save_dir}/base_model_alt_{seed}_{epoch}.pt")
+
     net.eval()
 
     return net
@@ -70,12 +75,10 @@ if __name__ == "__main__":
                                      clean_path=args['data_path'],
                                      corruption_path=args['corruption_path'],
                                      corruption_severity=0,
-                                     type=data_type,
-                                     datatype='train')
+                                     dsname=data_type,
+                                     split='train')
     
-    trainloader = torch.utils.data.DataLoader(trainset,
-                                              batch_size=args['batch_size'],
-                                              shuffle=True)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args['batch_size'], shuffle=True)
 
     # init and train base model
     if args['arch'] == 'resnet18':
@@ -84,6 +87,12 @@ if __name__ == "__main__":
     elif args['arch'] == 'resnet50':
         base_model = ResNet50(num_classes=args['num_classes'], seed=args['seed']).cuda()
         base_model_alternate = ResNet50(num_classes=args['num_classes'], seed=114514).cuda()
+    elif args['arch'] == 'densenet121':
+        base_model = DenseNet121(num_classes=args['num_classes'], seed=args['seed']).cuda()
+        base_model_alternate = DenseNet121(num_classes=args['num_classes'], seed=114514).cuda()
+    elif args['arch'] == 'vit_b_16':
+        base_model = ViT_B_16(num_classes=args['num_classes'], seed=args['seed']).cuda()
+        base_model_alternate = ViT_B_16(num_classes=args['num_classes'], seed=114514).cuda()
     elif args['arch'] == 'vgg11':
         base_model = VGG11(num_classes=args['num_classes'], seed=args['seed']).cuda()
         base_model_alternate = VGG11(num_classes=args['num_classes'], seed=114514).cuda()
@@ -91,13 +100,14 @@ if __name__ == "__main__":
         raise ValueError('incorrect model name')
 
     print('begin training...')
-    base_model = train(base_model, trainloader)
-    base_model_alternate = train(base_model_alternate, trainloader)
+    base_model = train(base_model, trainloader, save_dir_path, args['seed'], alt=False)
     base_model.eval()
-    base_model_alternate.eval()
     torch.save(base_model, f"{save_dir_path}/base_model_{args['model_seed']}.pt")
-    torch.save(base_model_alternate, f"{save_dir_path}/base_model_alt.pt")
     print('base model saved to', f"{save_dir_path}/base_model_{args['model_seed']}.pt")
+
+    base_model_alternate = train(base_model_alternate, trainloader, save_dir_path, args['seed'], alt=True)
+    base_model_alternate.eval()
+    torch.save(base_model_alternate, f"{save_dir_path}/base_model_alt.pt")
     print('base model alternate saved to', f"{save_dir_path}/base_model_alt.pt")
 
     # init ProjNorm
@@ -108,6 +118,8 @@ if __name__ == "__main__":
         ref_model = ResNet18(num_classes=args['num_classes'], seed=args['seed']).cuda()
     elif args['arch'] == 'resnet50':
         ref_model = ResNet50(num_classes=args['num_classes'], seed=args['seed']).cuda()
+    elif args['arch'] == 'densenet121':
+        ref_model = DenseNet121(num_classes=args['num_classes'], seed=args['seed']).cuda()
     elif args['arch'] == 'vgg11':
         ref_model = VGG11(num_classes=args['num_classes'], seed=args['seed']).cuda()
     else:
@@ -118,7 +130,7 @@ if __name__ == "__main__":
                         lr=args['lr'],
                         pseudo_iters=args['pseudo_iters'])
     
-    torch.save(PN.reference_model.eval(), f"{save_dir_path}/ref_model_{args['model_seed'].split('_')[0]}_{args['pseudo_iters']}.pt")
-    print('reference model saved to', f"{save_dir_path}/ref_model_{args['model_seed'].split('_')[0]}_{args['pseudo_iters']}.pt")
+    torch.save(PN.reference_model.eval(), f"{save_dir_path}/ref_model_{args['model_seed']}_{args['pseudo_iters']}.pt")
+    print('reference model saved to', f"{save_dir_path}/ref_model_{args['model_seed']}_{args['pseudo_iters']}.pt")
 
     print('========finished========')
