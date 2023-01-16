@@ -8,3 +8,12 @@ def get_train_val_size(dataset):
     }
 
     return config[dataset]
+
+def get_expected_label_distribution(dataset):
+    config = {
+        'cifar-10': [1 / 10] * 10,
+        'cifar-100': [1 / 100] * 100,
+        'tiny-imagenet': [1 / 200] * 200
+    }
+
+    return config[dataset]

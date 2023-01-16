@@ -12,16 +12,13 @@ parser.add_argument('--corruption_path', default='./data/CIFAR-10-C', type=str)
 parser.add_argument('--data_type', default='cifar-10', type=str)
 parser.add_argument('--corruption', default='snow', type=str)
 parser.add_argument('--severity', default=5, type=int)
-parser.add_argument('--pseudo_iters', default=50, type=int)
 parser.add_argument('--num_classes', default=10, type=int)
-parser.add_argument('--ref', default='val', type=str)
 parser.add_argument('--num_ood_samples', default=10000, type=int)
 parser.add_argument('--batch_size', default=128, type=int)
 parser.add_argument('--lr', default=0.001, type=float)
 parser.add_argument('--model_seed', default='1_15', type=str)
 parser.add_argument('--seed', default=1, type=int)
-parser.add_argument('--use_base_model', action='store_true',
-                    default=False, help='apply base_model for computing ProjNorm')
+
 args = vars(parser.parse_args())
 print(args)
 
@@ -35,8 +32,8 @@ if __name__ == "__main__":
                                    clean_path=args['data_path'],
                                    corruption_path=args['corruption_path'],
                                    corruption_severity=0,
-                                   datatype='train',
-                                   type=data_type)
+                                   split='train',
+                                   dsname=data_type)
 
     val_iid_loader = torch.utils.data.DataLoader(valset, batch_size=args['batch_size'], shuffle=False)
 
@@ -44,8 +41,8 @@ if __name__ == "__main__":
                                     clean_path=args['data_path'],
                                     corruption_path=args['corruption_path'],
                                     corruption_severity=args['severity'],
-                                    datatype='test',
-                                    type=data_type)
+                                    split='test',
+                                    dsname=data_type)
 
     val_ood_loader = torch.utils.data.DataLoader(valset_ood, batch_size=args['batch_size'], shuffle=False)
 

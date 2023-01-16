@@ -17,11 +17,11 @@ class TinyImageNet(Dataset):
             self.targets = [self.id_dict[img_path.replace("\\", "/").split("/")[-3]] for img_path in self.filenames]
         elif split == 'test':
             self.filenames = sorted(glob.glob(os.path.join(data_path, "val/images/*.JPEG")))
-            cls_dic = {}
+            self.cls_dic = {}
             for i, line in enumerate(open(os.path.join(data_path, 'val/val_annotations.txt'), 'r')):
                 a = line.split('\t')
                 img, cls_id = a[0], a[1]
-                cls_dic[img] = self.id_dict[cls_id]
+                self.cls_dic[img] = self.id_dict[cls_id]
             
             self.targets = [self.cls_dic[img_path.replace("\\", "/").split('/')[-1]] for img_path in self.filenames]
 
