@@ -1,6 +1,6 @@
 import torch
 import torchvision.transforms as transforms
-import torchvision.datasets as datasets
+from torchvision.datasets import CIFAR10, CIFAR100
 import os
 import numpy as np
 from torch_datasets.tiny_imagenet import *
@@ -8,14 +8,17 @@ from torch_datasets.configs import get_train_val_size
 from torch_datasets.cifar20 import CIFAR20, get_coarse_labels
 
 
-def load_image_dataset(corruption_type,
-                       clean_path,
-                       corruption_path,
-                       corruption_severity=0,
-                       split='test',
-                       num_samples=50000,
-                       dsname="cifar-10",
-                       seed=1):
+# def load_image_dataset(corruption_type,
+#                        clean_path,
+#                        corruption_path,
+#                        corruption_severity=0,
+#                        split='test',
+#                        num_samples=50000,
+#                        dsname="cifar-10",
+#                        seed=1):
+
+
+def load_train_dataset(split, configs):
 
     assert split in ['train', 'test'], 'unknown split'
     training_flag = True if split == 'train' else False
@@ -28,26 +31,22 @@ def load_image_dataset(corruption_type,
         transforms.Normalize(mean, std),
     ])
 
+    dsname = configs.dataset
+
     if dsname == "cifar-10":
-        dataset = datasets.CIFAR10(clean_path,
-                                   train=training_flag,
-                                   transform=transform,
-                                   download=True)
+        dataset = CIFAR10(configs.clean_path, train=training_flag, transform=transform, download=True)
     
     elif dsname == "cifar-20":
-        dataset = CIFAR20(clean_path,
-                          train=training_flag,
-                          transform=transform,
-                          download=True)
+        dataset = CIFAR20(configs.clean_path, train=training_flag, transform=transform, download=True)
 
     elif dsname == "cifar-100":
-        dataset = datasets.CIFAR100(clean_path,
-                                    train=training_flag,
-                                    transform=transform,
-                                    download=True)
+        dataset = CIFAR100(configs.clean_path, train=training_flag, transform=transform, download=True)
     
     elif dsname == 'tiny-imagenet':
-        dataset = TinyImageNet(clean_path, split=split, transform=transform)
+        dataset = TinyImageNet(configs.clean_path, split=split, transform=transform)
+    
+    else:
+        raise ValueError('unknown dataset')
 
     
     if corruption_severity > 0:
@@ -102,3 +101,58 @@ def load_image_dataset(corruption_type,
             print('number of test data: ', len(dataset))
 
         return dataset
+
+
+def load_train_dataset(configs):
+    if configs.use_pretrained_weights:
+        mean = [0.485, 0.456, 0.406]
+        std = [0.229, 0.224, 0.225]
+        transform = transforms.Compose([
+            transforms.Resize(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std),
+        ])
+    else:
+        transform = transforms.Compose([
+            transforms.Resize(224),
+            transforms.ToTensor(),
+        ])
+
+    dsname = configs.dataset
+
+    if dsname == "cifar-10":
+        dataset = CIFAR10(configs.clean_path, train=True, transform=transform, download=True)
+    
+    elif dsname == "cifar-20":
+        dataset = CIFAR20(configs.clean_path, train=True, transform=transform, download=True)
+
+    elif dsname == "cifar-100":
+        dataset = CIFAR100(configs.clean_path, train=True, transform=transform, download=True)
+    
+    elif dsname == 'tiny-imagenet':
+        dataset = TinyImageNet(configs.clean_path, split='train', transform=transform)
+    
+    else:
+        raise ValueError('unknown dataset')
+
+    assert configs.n_val_samples > 0, 'no validation set'
+    seed = configs.split_seed
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    n_samples = len(dataset.data)
+    index_permute = torch.randperm(n_samples)
+    dataset.data = [dataset.data[i] for i in index_permute]
+    dataset.targets = [dataset.targets[i] for i in index_permute]
+
+    train_size = n_samples - configs.n_val_samples
+
+    train_inds = index_permute[:train_size]
+    val_inds = index_permute[train_size:]
+
+    train_set = torch.utils.data.Subset(dataset, train_inds)
+    val_set = torch.utils.data.Subset(dataset, val_inds)
+
+    print("train size:", len(train_set))
+    print("valid size:", len(val_set))
+
+    return train_set, val_set
