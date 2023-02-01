@@ -10,7 +10,7 @@ from torch_datasets.configs import get_expected_label_distribution
 import numpy as np
 import json
 import torch
-import math
+from utils import compute_t
 import os
 from tqdm import tqdm
 import ot
@@ -48,13 +48,15 @@ def main():
     corruption = args.corruption
     severity = args.severity
 
+    # load in iid data for calibration
     _, val_set = load_train_dataset(dsname=dsname,
                                     iid_path=args.data_path,
                                     n_val_samples=args.n_val_samples,
                                     seed=args.dataset_seed)
 
     val_iid_loader = torch.utils.data.DataLoader(val_set, batch_size=args.batch_size, shuffle=False)
-
+    
+    # load in ood test data 
     valset_ood = load_test_dataset(dsname=dsname,
                                    iid_path=args.data_path,
                                    corr_path=args.corruption_path,
@@ -73,7 +75,8 @@ def main():
 
     base_model = torch.load(f"{save_dir_path}/base_model_{args.model_seed}.pt", map_location=device)
     model = base_model.eval()
-
+    
+    # use temperature scaling to calibrate model
     temp_dir = f"{save_dir_path}/base_model_{args.model_seed}_temp.json"
     model = calibrate(model, val_iid_loader, temp_dir)
 
@@ -99,12 +102,27 @@ def main():
         iid_acts, ood_acts = nn.functional.one_hot(iid_tars), act(ood_acts)
         
         M = torch.from_numpy(ot.dist(iid_acts.cpu().numpy(), ood_acts.cpu().numpy(), metric='minkowski', p=1)).to(device)
-        
         weights = torch.as_tensor([]).to(device)
+        est = ( ot.emd2(weights, weights, M, numItermax=10**8) / 2 + conf_gap ).item()
+    
+    elif metric == 'ATC':
+        cache_dir = f"cache/{dsname}/{args.arch}_{model_seed}/iid_result.json"
+        if os.path.exists(cache_dir):
+            with open(cache_dir, 'r') as f:
+                data = json.load(f)
+                t = data['t']
+        else:
+            os.makedirs(os.path.dirname(cache_dir), exist_ok=True)
+            with open(cache_dir, 'w') as f:
+                print('compute confidence threshold...')
+                t = compute_t(model, val_iid_loader).item()
+                json.dump({'t': t}, f)
+        
+        softmax = nn.Softmax(dim=1)
+        s_softmax = torch.sum(softmax(ood_acts) * torch.log2(softmax(ood_acts)), dim=1)
+        est = (s_softmax < t).sum().item() / len(ood_acts)
 
-        dist = ot.emd2(weights, weights, M, numItermax=10**8) / 2 + conf_gap
-
-    print(f'{metric} value:', dist.item())
+    print(f'{metric} value:', est)
 
     result_dir = f"results/{dsname}/{args.arch}_{model_seed}/{args.metric}_{n_test_sample}/{corruption}.json"
 
@@ -121,7 +139,7 @@ def main():
     data.append({
         'corruption': corruption,
         'corruption level': severity,
-        'metric': float(dist),
+        'metric': float(est),
         'ref': metric,
         'acc': float(ood_acc),
         'error': 1 - ood_acc,
