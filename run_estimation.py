@@ -105,6 +105,31 @@ def main():
         weights = torch.as_tensor([]).to(device)
         est = ( ot.emd2(weights, weights, M, numItermax=10**8) / 2 + conf_gap ).item()
     
+    elif metric == 'REMD':
+        act = nn.Softmax(dim=1)
+        iid_acts, ood_acts = nn.functional.one_hot(iid_tars), act(ood_acts)
+
+        def reduce_classes(acts):
+            tar_n_class = 10
+            cur_n_class = acts.shape[1]
+            if cur_n_class < tar_n_class:
+                return acts
+            else:
+                chunk_size = cur_n_class // tar_n_class
+                chunks = []
+                for i in range(tar_n_class):
+                    chunks.append(
+                        acts[:, i * chunk_size : (i+1) * chunk_size].sum(1).unsqueeze(1)
+                    )
+                return torch.cat(chunks, dim=1)
+
+        riid_acts = reduce_classes(iid_acts)
+        rood_acts = reduce_classes(ood_acts)
+        
+        M = torch.from_numpy(ot.dist(riid_acts.cpu().numpy(), rood_acts.cpu().numpy(), metric='minkowski', p=1)).to(device)
+        weights = torch.as_tensor([]).to(device)
+        est = ( ot.emd2(weights, weights, M, numItermax=10**8) / 2 + conf_gap ).item()
+    
     elif metric == 'ATC':
         cache_dir = f"cache/{dsname}/{args.arch}_{model_seed}/iid_result.json"
         if os.path.exists(cache_dir):

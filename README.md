@@ -1,4 +1,4 @@
-# Predicting Out-of-Distribution Error with Feature Optimal Transport
+# Predicting Out-of-Distribution Error with Confidence Optimal Transport
 
 ```run_fot.py``` implements our proposed Feature Optimal Transport algorithm.
 
