@@ -105,13 +105,14 @@ def main():
         weights = torch.as_tensor([]).to(device)
         est = ( ot.emd2(weights, weights, M, numItermax=10**8) / 2 + conf_gap ).item()
     
-    elif metric == 'REMD':
+    elif metric == 'REMD_2':
         act = nn.Softmax(dim=1)
         iid_acts, ood_acts = nn.functional.one_hot(iid_tars), act(ood_acts)
+        reduction_rate = int(metric.split('_')[-1])
 
         def reduce_classes(acts):
-            tar_n_class = 10
             cur_n_class = acts.shape[1]
+            tar_n_class = cur_n_class // reduction_rate
             if cur_n_class < tar_n_class:
                 return acts
             else:
