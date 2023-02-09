@@ -17,3 +17,13 @@ def get_expected_label_distribution(dataset):
     }
 
     return config[dataset]
+
+
+def get_n_classes(dataset):
+    n_class = {
+        'CIFAR-10': 10,
+        'CIFAR-100': 100,
+        'Tiny-ImageNet': 200
+    }
+
+    return n_class[dataset]

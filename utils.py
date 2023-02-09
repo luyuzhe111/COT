@@ -65,7 +65,7 @@ def baseline_evaluation(net, testloader, val_loader, t, t_vec, net2):
             # AgreeScore
             metrics[3] += predicted.eq(predicted2).sum().item()
 
-    return metrics / total, test_loss / total, 100. * correct / total
+    return metrics / total, test_loss / total, 100 * correct / total
 
 
 def compute_t(net, iid_loader):
