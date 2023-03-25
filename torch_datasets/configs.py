@@ -56,38 +56,33 @@ def get_transforms(dataset, split, pretrained):
     
     return transform
 
-def get_optimizer(dsname, net):
+def get_optimizer(dsname, net, lr):
     if dsname in ['CIFAR-10', 'CIFAR-100', 'Tiny-ImageNet']:
-        return optim.SGD(net.parameters(), lr=0.001, momentum=0.9, weight_decay=0.0)
+        return optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=0.0)
     elif dsname == 'Living-17':
-        return optim.SGD(net.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4)
+        return optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
 
 
 def get_lr_scheduler(dsname, opt, T_max=-1):
     if dsname in ['CIFAR-10', 'CIFAR-100', 'Tiny-ImageNet']:
         return optim.lr_scheduler.CosineAnnealingLR(opt, T_max=T_max)
     elif dsname == 'Living-17':
-        return optim.lr_scheduler.MultiStepLR(opt, milestones=[50, 100, 150], gamma=0.1)
+        return optim.lr_scheduler.MultiStepLR(opt, milestones=[150, 300, 450], gamma=0.1)
 
 
-def get_models(arch, n_class, model_seed, alt_model_seed, pretrained):
+def get_models(arch, n_class, model_seed, pretrained):
     if arch == 'resnet18':
-        base_model = ResNet18(num_classes=n_class, seed=model_seed, pretrained=pretrained)
-        base_model_alt = ResNet18(num_classes=n_class, seed=alt_model_seed, pretrained=pretrained)
+        model = ResNet18(num_classes=n_class, seed=model_seed, pretrained=pretrained)
     elif arch == 'resnet50':
-        base_model = ResNet50(num_classes=n_class, seed=model_seed, pretrained=pretrained)
-        base_model_alt = ResNet50(num_classes=n_class, seed=alt_model_seed, pretrained=pretrained)
+        model = ResNet50(num_classes=n_class, seed=model_seed, pretrained=pretrained)
     elif arch == 'densenet121':
-        base_model = DenseNet121(num_classes=n_class, seed=model_seed, pretrained=pretrained)
-        base_model_alt = DenseNet121(num_classes=n_class, seed=alt_model_seed, pretrained=pretrained)
+        model = DenseNet121(num_classes=n_class, seed=model_seed, pretrained=pretrained)
     elif arch == 'vit_b_16':
-        base_model = ViT_B_16(num_classes=n_class, seed=model_seed, pretrained=pretrained)
-        base_model_alt = ViT_B_16(num_classes=n_class, seed=alt_model_seed, pretrained=pretrained)
+        model = ViT_B_16(num_classes=n_class, seed=model_seed, pretrained=pretrained)
     elif arch == 'vgg11':
-        base_model = VGG11(num_classes=n_class, seed=model_seed, pretrained=pretrained)
-        base_model_alt = VGG11(num_classes=n_class, seed=alt_model_seed, pretrained=pretrained)
+        model = VGG11(num_classes=n_class, seed=model_seed, pretrained=pretrained)
     else:
         raise ValueError('incorrect model name')
 
-    return base_model, base_model_alt
+    return model
 
