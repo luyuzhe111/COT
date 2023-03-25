@@ -61,7 +61,7 @@ def main():
 def train(net, trainloader, save_dir, args, device, alt=False):
     net.train()
     optimizer = get_optimizer(args.dataset, net)
-    scheduler = get_lr_scheduler(args.dataset, optimizer, T_max=args.train_epoch * len(trainloader))
+    scheduler = get_lr_scheduler(args.dataset, optimizer, T_max=args.train_epoch)
     criterion = nn.CrossEntropyLoss()
 
     for epoch in range(args.train_epoch):
@@ -86,7 +86,8 @@ def train(net, trainloader, save_dir, args, device, alt=False):
                       'Loss: %.3f | Acc: %.3f%% (%d/%d)| Lr: %.5f' % (
                           train_loss / (batch_idx + 1), 100. * correct / total, correct, total, current_lr)
                      )
-            scheduler.step()
+        
+        scheduler.step()
 
         if epoch % 5 == 0:
             if not alt:
