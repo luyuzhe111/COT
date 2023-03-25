@@ -1,10 +1,11 @@
 import argparse
 import torchvision.models as models
 import torch.nn as nn
-from projnorm import *
+import torch.optim as optim
 from load_data import *
-from model import ResNet18, ResNet50, DenseNet121, VGG11, ViT_B_16
-from torch_datasets.configs import get_n_classes
+from torch_datasets.configs import (
+    get_n_classes, get_optimizer, get_lr_scheduler, get_models
+)
 
 
 def main():
@@ -15,13 +16,12 @@ def main():
     parser.add_argument('--arch', default='resnet18', type=str)
     parser.add_argument('--batch_size', default=64, type=int)
     parser.add_argument('--lr', default=0.001, type=float)
+    parser.add_argument('--pretrained', action='store_true', default=False)
     parser.add_argument('--train_epoch', default=20, type=int)
 
     parser.add_argument('--dataset_seed', default=1, type=int)
-    parser.add_argument('--model_seed', default=10, type=int)
-    parser.add_argument('--alt_model_seed', default=100, type=int)
-
-    parser.add_argument('--pseudo_iters', default=500, type=int)
+    parser.add_argument('--model_seed', default=1, type=int)
+    parser.add_argument('--alt_model_seed', default=10, type=int)
 
     args = parser.parse_args()
 
@@ -43,24 +43,9 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # init and train base model
-    if args.arch == 'resnet18':
-        base_model = ResNet18(num_classes=n_class, seed=args.model_seed).to(device)
-        base_model_alt = ResNet18(num_classes=n_class, seed=args.alt_model_seed).to(device)
-    elif args.arch == 'resnet50':
-        base_model = ResNet50(num_classes=n_class, seed=args.model_seed).to(device)
-        base_model_alt = ResNet50(num_classes=n_class, seed=args.alt_model_seed).to(device)
-    elif args.arch == 'densenet121':
-        base_model = DenseNet121(num_classes=n_class, seed=args.model_seed).to(device)
-        base_model_alt = DenseNet121(num_classes=n_class, seed=args.alt_model_seed).to(device)
-    elif args.arch == 'vit_b_16':
-        base_model = ViT_B_16(num_classes=n_class, seed=args.model_seed).to(device)
-        base_model_alt = ViT_B_16(num_classes=n_class, seed=args.alt_model_seed).to(device)
-    elif args.arch == 'vgg11':
-        base_model = VGG11(num_classes=n_class, seed=args.model_seed).to(device)
-        base_model_alt = VGG11(num_classes=n_class, seed=args.alt_model_seed).to(device)
-    else:
-        raise ValueError('incorrect model name')
-
+    base_model, base_model_alt = get_models(args.arch, n_class, args.model_seed, args.alt_model_seed, args.pretrained)
+    base_model, base_model_alt = base_model.to(device), base_model_alt.to(device)
+    
     print('begin training...')
     base_model = train(base_model, trainloader, save_dir_path, args, device, alt=False)
     base_model.eval()
@@ -75,8 +60,8 @@ def main():
 
 def train(net, trainloader, save_dir, args, device, alt=False):
     net.train()
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.0)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.train_epoch * len(trainloader))
+    optimizer = get_optimizer(args.dataset, net)
+    scheduler = get_lr_scheduler(args.dataset, optimizer, T_max=args.train_epoch * len(trainloader))
     criterion = nn.CrossEntropyLoss()
 
     for epoch in range(args.train_epoch):

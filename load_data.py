@@ -1,31 +1,20 @@
 import torch
-import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10, CIFAR100
 from torch.utils.data import Dataset
 import os
 import numpy as np
-from torch_datasets.tiny_imagenet import *
+from torch_datasets.configs import get_transforms
+from torch_datasets.breeds import get_breeds_dataset
+from torch_datasets.tiny_imagenet import TinyImageNet, TinyImageNetCorrupted
 from torch_datasets.cifar20 import CIFAR20, get_coarse_labels
 
 
 def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True):
-    if pretrained:
-        mean = [0.485, 0.456, 0.406]
-        std = [0.229, 0.224, 0.225]
-        transform = transforms.Compose([
-            transforms.Resize(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std),
-        ])
-    else:
-        transform = transforms.Compose([
-            transforms.Resize(224),
-            transforms.ToTensor(),
-        ])
-
+    transform = get_transforms(dsname, 'train', pretrained)
+    
     if dsname == "CIFAR-10":
         dataset = CIFAR10(iid_path, train=True, transform=transform, download=True)
-    
+
     elif dsname == "CIFAR-20":
         dataset = CIFAR20(iid_path, train=True, transform=transform, download=True)
 
@@ -34,6 +23,9 @@ def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True)
     
     elif dsname == 'Tiny-ImageNet':
         dataset = TinyImageNet(iid_path, split='train', transform=transform)
+    
+    elif dsname == 'Living-17':
+        dataset = get_breeds_dataset(iid_path, split='train', transform=transform)
     
     else:
         raise ValueError('unknown dataset')
@@ -61,19 +53,7 @@ def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True)
 
 
 def load_test_dataset(dsname, iid_path, corr_path, corr_type, corr_sev, n_test_sample, seed=1, pretrained=True):
-    if pretrained:
-        mean = [0.485, 0.456, 0.406]
-        std = [0.229, 0.224, 0.225]
-        transform = transforms.Compose([
-            transforms.Resize(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std),
-        ])
-    else:
-        transform = transforms.Compose([
-            transforms.Resize(224),
-            transforms.ToTensor(),
-        ])
+    transform = get_transforms(dsname, 'test', pretrained)
 
     # test on in-distribution data
     if dsname == "CIFAR-10":
