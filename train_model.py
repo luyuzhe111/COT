@@ -1,8 +1,6 @@
 import argparse
 import torchvision.models as models
 import torch.nn as nn
-import torch.optim as optim
-from torch.nn.parallel import DistributedDataParallel as DDP
 from load_data import *
 from torch_datasets.configs import (
     get_n_classes, get_optimizer, get_lr_scheduler, get_models
@@ -50,7 +48,7 @@ def main():
     base_model = torch.nn.DataParallel( base_model, device_ids=range(n_device) )
     
     print('begin training...')
-    base_model = train(base_model, trainloader, save_dir_path, args, device, alt=False)
+    base_model = train(base_model, trainloader, save_dir_path, args, device)
     base_model.eval()
     torch.save(base_model, f"{save_dir_path}/base_model_{args.model_seed}.pt")
     print('base model saved to', f"{save_dir_path}/base_model_{args.model_seed}.pt")
@@ -92,8 +90,8 @@ def train(net, trainloader, save_dir, args, device):
                      )   
         scheduler.step()
 
-        if epoch % 5 == 0:
-            torch.save(net, f"{save_dir}/base_model_alt_{args.alt_model_seed}_{epoch}.pt")
+        if epoch % 50 == 0:
+            torch.save(net, f"{save_dir}/base_model_{args.model_seed}_{epoch}.pt")
     
     end = time.time()
     print(f"time used: {end - start}s")

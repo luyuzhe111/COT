@@ -4,8 +4,18 @@ from robustness.tools.breeds_helpers import make_living17, make_entity13, make_e
 import torchvision.transforms as transforms
 
 
-def get_breeds_dataset(data_dir, split, transform):
-    ret = make_living17(f"{data_dir}/imagenet_class_hierarchy/", split="good")
+def get_breeds_dataset(data_dir, dsname, split, transform):
+    if dsname == 'Living-17':
+        ret = make_living17(f"{data_dir}/imagenet_class_hierarchy/", split="good")
+    elif dsname == 'Nonliving-26':
+        ret = make_nonliving26(f"{data_dir}/imagenet_class_hierarchy/", split="good")
+    elif dsname == 'Entity-13':
+        ret = make_entity13(f"{data_dir}/imagenet_class_hierarchy/", split="good")
+    elif dsname == 'Entity-30':
+        ret = make_entity30(f"{data_dir}/imagenet_class_hierarchy/", split="good")
+    else:
+        raise ValueError(f'unknown dataset: {dsname}')
+    
     source_label_mapping = get_label_mapping('custom_imagenet', ret[1][0]) 
     target_label_mapping = get_label_mapping('custom_imagenet', ret[1][1])
 

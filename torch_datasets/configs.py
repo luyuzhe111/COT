@@ -46,7 +46,7 @@ def get_transforms(dataset, split, pretrained):
                 transforms.ToTensor(),
             ])
     
-    elif dataset == 'Living-17':
+    elif dataset in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
         transform = transforms.Compose([
             transforms.Resize(256),
             transforms.CenterCrop(224),
@@ -59,15 +59,17 @@ def get_transforms(dataset, split, pretrained):
 def get_optimizer(dsname, net, lr):
     if dsname in ['CIFAR-10', 'CIFAR-100', 'Tiny-ImageNet']:
         return optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=0.0)
-    elif dsname == 'Living-17':
+    elif dsname in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
         return optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
 
 
 def get_lr_scheduler(dsname, opt, T_max=-1):
     if dsname in ['CIFAR-10', 'CIFAR-100', 'Tiny-ImageNet']:
         return optim.lr_scheduler.CosineAnnealingLR(opt, T_max=T_max)
-    elif dsname == 'Living-17':
+    elif dsname in ['Living-17', 'Nonliving-26']:
         return optim.lr_scheduler.MultiStepLR(opt, milestones=[150, 300, 450], gamma=0.1)
+    elif dsname in ['Entity-13', 'Entity-30']:
+        return optim.lr_scheduler.MultiStepLR(opt, milestones=[100, 200, 300], gamma=0.1)
 
 
 def get_models(arch, n_class, model_seed, pretrained):
