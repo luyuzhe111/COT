@@ -6,7 +6,7 @@ from misc.temperature_scaling import calibrate
 from collections import Counter
 from utils import gather_outputs
 from misc.torch_interp import interpolate
-from torch_datasets.configs import get_expected_label_distribution
+from torch_datasets.configs import get_expected_label_distribution, get_n_classes
 import numpy as np
 import json
 import torch
@@ -26,13 +26,14 @@ def main():
     parser.add_argument('--dataset', default='cifar-10', type=str)
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--n_val_samples', default=10000, type=int)
-    parser.add_argument('--n_test_samples', default=1000, type=int)
+    parser.add_argument('--n_test_samples', default=10000, type=int)
     parser.add_argument('--dataset_seed', default=1, type=int)
     parser.add_argument('--model_seed', default=1, type=int)
     parser.add_argument('--ckpt_epoch', default=20, type=int)
 
     # synthetic shifts configs
     parser.add_argument('--data_path', default='./data/CIFAR-10', type=str)
+    parser.add_argument('--shift', default='synthetic', type=str)
     parser.add_argument('--corruption_path', default='./data/CIFAR-10-C/', type=str)
     parser.add_argument('--corruption', default='brightness', type=str)
     parser.add_argument('--severity', default=1, type=int)
@@ -54,8 +55,8 @@ def main():
                                     n_val_samples=args.n_val_samples,
                                     seed=args.dataset_seed)
 
-    val_iid_loader = torch.utils.data.DataLoader(val_set, batch_size=args.batch_size, shuffle=False)
-    
+    val_iid_loader = torch.utils.data.DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=4)
+
     # load in ood test data 
     valset_ood = load_test_dataset(dsname=dsname,
                                    iid_path=args.data_path,
@@ -64,21 +65,25 @@ def main():
                                    corr_sev=args.severity,
                                    n_test_sample=n_test_sample)
 
-    val_ood_loader = torch.utils.data.DataLoader(valset_ood, batch_size=args.batch_size, shuffle=True)
+    val_ood_loader = torch.utils.data.DataLoader(valset_ood, batch_size=args.batch_size, shuffle=True, num_workers=4)
+
+    n_test_sample = len(valset_ood)
 
     cache_dir = f"./cache/{dsname}/{args.arch}_{model_seed}"
     os.makedirs(cache_dir, exist_ok=True)
-    cache_id_dir = f"{cache_dir}/id_{model_seed}_d{args.dataset_seed}.pkl"
-    cache_od_dir = f"{cache_dir}/od_{model_seed}_{args.corruption}-{args.severity}_n{n_test_sample}.pkl"
+    cache_id_dir = f"{cache_dir}/id_{model_seed}-{args.ckpt_epoch}_d{args.dataset_seed}.pkl"
+    cache_od_dir = f"{cache_dir}/od_{model_seed}_{args.ckpt_epoch}-{args.severity}_n{n_test_sample}.pkl"
 
     save_dir_path = f"./checkpoints/{dsname}/{args.arch}"
 
-    base_model = torch.load(f"{save_dir_path}/base_model_{args.model_seed}.pt", map_location=device)
+    base_model = torch.load(f"{save_dir_path}/base_model_{args.model_seed}_{args.ckpt_epoch}.pt", map_location=device)
     model = base_model.eval()
     
     # use temperature scaling to calibrate model
-    temp_dir = f"{save_dir_path}/base_model_{args.model_seed}_temp.json"
+    print('calibrating models...')
+    temp_dir = f"{save_dir_path}/base_model_{args.model_seed}-{args.ckpt_epoch}_temp.json"
     model = calibrate(model, val_iid_loader, temp_dir)
+    print('calibration done.')
 
     iid_acts, iid_preds, iid_tars = gather_outputs(model, val_iid_loader, device, cache_id_dir)
     ood_acts, ood_preds, ood_tars = gather_outputs(model, val_ood_loader, device, cache_od_dir)
@@ -89,45 +94,38 @@ def main():
     conf = torch.nn.functional.softmax(iid_acts, dim=1).amax(1).mean().item()
     conf_gap =  conf - iid_acc
 
-    print('validation acc:', iid_acc)
+    print('n ood test sample:', n_test_sample)
+
+    print('------------------')
+    print(f'validation acc:', iid_acc)
     print('validation confidence:', conf)
     print('confidence gap:', conf - iid_acc)
-    print('out-distribution acc:', ood_acc)
+    print('------------------')
+    print()
+
+    n_class = get_n_classes(args.dataset)
+    ood_preds_count = Counter(ood_preds.tolist())
+
+    ood_tars_dist = get_expected_label_distribution(args.dataset)
+    ood_preds_dist = [ood_preds_count[i] / len(ood_acts) for i in range(n_class)]
+
+    print('------------------')
+    print("ood pseudo label tv:", sum(abs(np.array(ood_tars_dist) - np.array(ood_preds_dist))) / 2 )
+    print('------------------')
+    print()
 
     metric = args.metric
 
-    if metric == 'EMD':
-        act = nn.Softmax(dim=1)
-
-        iid_acts, ood_acts = nn.functional.one_hot(iid_tars), act(ood_acts)
+    if metric == 'COT':
+        exp_label_counts = [int(i * n_test_sample) for i in get_expected_label_distribution(args.dataset)]
+        all_labels = []
+        for i in range(len(exp_label_counts)):
+            all_labels.extend([i] * exp_label_counts[i])
+        
+        iid_acts = nn.functional.one_hot( torch.as_tensor(all_labels) )
+        ood_acts = nn.functional.softmax(ood_acts, dim=-1)
         
         M = torch.from_numpy(ot.dist(iid_acts.cpu().numpy(), ood_acts.cpu().numpy(), metric='minkowski', p=1)).to(device)
-        weights = torch.as_tensor([]).to(device)
-        est = ( ot.emd2(weights, weights, M, numItermax=10**8) / 2 + conf_gap ).item()
-    
-    elif metric == 'REMD':
-        act = nn.Softmax(dim=1)
-        iid_acts, ood_acts = nn.functional.one_hot(iid_tars), act(ood_acts)
-        reduction_rate = int(metric.split('_')[-1])
-
-        def reduce_classes(acts):
-            cur_n_class = acts.shape[1]
-            tar_n_class = cur_n_class // reduction_rate
-            if cur_n_class < tar_n_class:
-                return acts
-            else:
-                chunk_size = cur_n_class // tar_n_class
-                chunks = []
-                for i in range(tar_n_class):
-                    chunks.append(
-                        acts[:, i * chunk_size : (i+1) * chunk_size].sum(1).unsqueeze(1)
-                    )
-                return torch.cat(chunks, dim=1)
-
-        riid_acts = reduce_classes(iid_acts)
-        rood_acts = reduce_classes(ood_acts)
-        
-        M = torch.from_numpy(ot.dist(riid_acts.cpu().numpy(), rood_acts.cpu().numpy(), metric='minkowski', p=1)).to(device)
         weights = torch.as_tensor([]).to(device)
         est = ( ot.emd2(weights, weights, M, numItermax=10**8) / 2 + conf_gap ).item()
     
@@ -148,7 +146,11 @@ def main():
         s_softmax = torch.sum(softmax(ood_acts) * torch.log2(softmax(ood_acts)), dim=1)
         est = (s_softmax < t).sum().item() / len(ood_acts)
 
-    print(f'{metric} value:', est)
+    print('------------------')
+    print('True OOD error:', 1 - ood_acc)
+    print(f'{metric} predicted OOD error:', est)
+    print('------------------')
+    print()
 
     result_dir = f"results/{dsname}/{args.arch}_{model_seed}/{args.metric}_{n_test_sample}/{corruption}.json"
 
