@@ -6,6 +6,7 @@ from torch_datasets.configs import (
     get_n_classes, get_optimizer, get_lr_scheduler, get_models
 )
 import time
+import torch.backends.cudnn as cudnn
 
 
 def main():
@@ -35,9 +36,10 @@ def main():
     trainset, _ = load_train_dataset(dsname=dsname,
                                      iid_path=args.data_path,
                                      n_val_samples=args.n_val_samples,
+                                     pretrained=args.pretrained,
                                      seed=args.dataset_seed)
     
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, num_workers=4, shuffle=True)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, num_workers=8, shuffle=True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -46,6 +48,7 @@ def main():
 
     n_device = torch.cuda.device_count()
     base_model = torch.nn.DataParallel( base_model, device_ids=range(n_device) )
+    cudnn.benchmark = False
     
     print('begin training...')
     base_model = train(base_model, trainloader, save_dir_path, args, device)
@@ -61,11 +64,11 @@ def train(net, trainloader, save_dir, args, device):
     criterion = nn.CrossEntropyLoss()
     scaler = torch.cuda.amp.GradScaler(enabled=True)
 
-    start = time.time()
-    for epoch in range(args.train_epoch):
+    for epoch in range(1, args.train_epoch + 1):
         train_loss = 0
         correct = 0
         total = 0
+        start = time.time()
         for batch_idx, (inputs, targets) in enumerate(trainloader):
             inputs, targets = inputs.to(device), targets.to(device)
             optimizer.zero_grad()
@@ -90,11 +93,11 @@ def train(net, trainloader, save_dir, args, device):
                      )   
         scheduler.step()
 
+        end = time.time()
+        print(f"time used: {end - start}s")
+
         if epoch % 50 == 0:
             torch.save(net, f"{save_dir}/base_model_{args.model_seed}_{epoch}.pt")
-    
-    end = time.time()
-    print(f"time used: {end - start}s")
 
     net.eval()
 

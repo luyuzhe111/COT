@@ -27,7 +27,7 @@ def get_breeds_dataset(data_dir, dsname, split, transform):
         )
     elif split == 'test':
         dataset =  folder.ImageFolder(
-            root=f"{data_dir}/train/", 
+            root=f"{data_dir}/val/", 
             transform = transform, 
             label_mapping = target_label_mapping
         )
