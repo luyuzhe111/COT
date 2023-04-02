@@ -4,8 +4,8 @@ from model import ResNet18, ResNet50, DenseNet121, VGG11, ViT_B_16
 
 def get_train_val_size(dataset):
     config = {
-        'cifar-10': [50000, 10000],
-        'cifar-100': [50000, 10000],
+        'CIFAR-10': [50000, 10000],
+        'CIFAR-100': [50000, 10000],
         'tiny-imagenet': [90000, 10000]
     }
 
@@ -13,8 +13,8 @@ def get_train_val_size(dataset):
 
 def get_expected_label_distribution(dataset):
     config = {
-        'cifar-10': [1 / 10] * 10,
-        'cifar-100': [1 / 100] * 100,
+        'CIFAR-10': [1 / 10] * 10,
+        'CIFAR-100': [1 / 100] * 100,
         'tiny-imagenet': [1 / 200] * 200,
         'Living-17': [1 / 17] * 17,
         'Nonliving-26': [1 / 26] * 26
@@ -29,7 +29,9 @@ def get_n_classes(dataset):
         'CIFAR-100': 100,
         'Tiny-ImageNet': 200,
         'Living-17': 17,
-        'Nonliving-26': 26
+        'Nonliving-26': 26,
+        'Entity-13': 13,
+        'Entity-30': 30,
     }
 
     return n_class[dataset]
@@ -59,16 +61,23 @@ def get_transforms(dataset, split, pretrained):
     
     return transform
 
-def get_optimizer(dsname, net, lr):
+def get_optimizer(dsname, net, lr, pretrained):
     if dsname in ['CIFAR-10', 'CIFAR-100', 'Tiny-ImageNet']:
-        return optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=0.0)
+        if pretrained:
+            return optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=0)
+        else:
+            return optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
+    
     elif dsname in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
         return optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
 
 
-def get_lr_scheduler(dsname, opt, T_max=-1):
+def get_lr_scheduler(dsname, opt, pretrained, T_max=-1):
     if dsname in ['CIFAR-10', 'CIFAR-100', 'Tiny-ImageNet']:
-        return optim.lr_scheduler.CosineAnnealingLR(opt, T_max=T_max)
+        if pretrained:
+            return optim.lr_scheduler.CosineAnnealingLR(opt, T_max=T_max)
+        else:
+            return optim.lr_scheduler.MultiStepLR(opt, milestones=[100, 200], gamma=0.1)
     elif dsname in ['Living-17', 'Nonliving-26']:
         return optim.lr_scheduler.MultiStepLR(opt, milestones=[150, 300], gamma=0.1)
     elif dsname in ['Entity-13', 'Entity-30']:

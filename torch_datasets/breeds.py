@@ -1,10 +1,10 @@
 from robustness.tools.helpers import get_label_mapping
 from robustness.tools import folder
 from robustness.tools.breeds_helpers import make_living17, make_entity13, make_entity30, make_nonliving26
-import torchvision.transforms as transforms
+import os
 
 
-def get_breeds_dataset(data_dir, dsname, split, transform):
+def get_breeds_dataset(data_dir, dsname, subpopulation, split, transform, corr='clean', corr_sev=0):
     if dsname == 'Living-17':
         ret = make_living17(f"{data_dir}/imagenet_class_hierarchy/", split="good")
     elif dsname == 'Nonliving-26':
@@ -18,18 +18,19 @@ def get_breeds_dataset(data_dir, dsname, split, transform):
     
     source_label_mapping = get_label_mapping('custom_imagenet', ret[1][0]) 
     target_label_mapping = get_label_mapping('custom_imagenet', ret[1][1])
+    assert subpopulation in ['same', 'novel'], 'unknown subpopulation'
 
     if split == 'train':
         dataset = folder.ImageFolder(
-            root=f"{data_dir}/train/", 
+            root=f"{data_dir}/imagenetv1/train/", 
             transform = transform, 
             label_mapping = source_label_mapping
         )
     elif split == 'test':
         dataset =  folder.ImageFolder(
-            root=f"{data_dir}/val/", 
+            root=f"{data_dir}/imagenetv1/val/" if corr == 'clean' else f"{data_dir}/imagenet-c/{corr}/{corr_sev}", 
             transform = transform, 
-            label_mapping = target_label_mapping
+            label_mapping = ( source_label_mapping if subpopulation == 'same' else target_label_mapping)
         )
     else:
         raise ValueError('unknown split')

@@ -25,21 +25,28 @@ def main():
 
     args = parser.parse_args()
 
+    print(vars(args))
+
     dsname = args.dataset
     n_class = get_n_classes(dsname)
     
-    save_dir_path = f"./checkpoints/{dsname}/{args.arch}"
+    if args.pretrained:
+        save_dir_path = f"./checkpoints/{dsname}/{args.arch}/pretrained"
+    else:
+        save_dir_path = f"./checkpoints/{dsname}/{args.arch}/scratch"
+    
     if not os.path.exists(save_dir_path):
         os.makedirs(save_dir_path)
 
     # setup train/val_iid loaders
-    trainset, _ = load_train_dataset(dsname=dsname,
+    trainset, valset = load_train_dataset(dsname=dsname,
                                      iid_path=args.data_path,
                                      n_val_samples=args.n_val_samples,
                                      pretrained=args.pretrained,
                                      seed=args.dataset_seed)
     
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, num_workers=8, shuffle=True)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, num_workers=4, shuffle=True, pin_memory=True)
+    valloader = torch.utils.data.DataLoader(valset, batch_size=args.batch_size, num_workers=4, shuffle=False, pin_memory=True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -51,16 +58,16 @@ def main():
     cudnn.benchmark = False
     
     print('begin training...')
-    base_model = train(base_model, trainloader, save_dir_path, args, device)
+    base_model = train(base_model, trainloader, valloader, save_dir_path, args, device)
     base_model.eval()
-    torch.save(base_model, f"{save_dir_path}/base_model_{args.model_seed}.pt")
-    print('base model saved to', f"{save_dir_path}/base_model_{args.model_seed}.pt")
+    torch.save(base_model, f"{save_dir_path}/base_model_{args.model_seed}-{args.train_epoch}.pt")
+    print('base model saved to', f"{save_dir_path}/base_model_{args.model_seed}-{args.train_epoch}.pt")
 
 
-def train(net, trainloader, save_dir, args, device):
+def train(net, trainloader, valloader, save_dir, args, device):
     net.train()
-    optimizer = get_optimizer(args.dataset, net, args.lr)
-    scheduler = get_lr_scheduler(args.dataset, optimizer, T_max=args.train_epoch)
+    optimizer = get_optimizer(args.dataset, net, args.lr, args.pretrained)
+    scheduler = get_lr_scheduler(args.dataset, optimizer, args.pretrained, T_max=args.train_epoch)
     criterion = nn.CrossEntropyLoss()
     scaler = torch.cuda.amp.GradScaler(enabled=True)
 
@@ -90,14 +97,34 @@ def train(net, trainloader, save_dir, args, device):
                 print('Epoch: ', epoch, '(', batch_idx, '/', len(trainloader), ')',
                       'Loss: %.3f | Acc: %.3f%% (%d/%d)| Lr: %.5f' % (
                           train_loss / (batch_idx + 1), 100. * correct / total, correct, total, current_lr)
-                     )   
+                     )
+
+            if batch_idx % 100 == 0:   
+                print(f"time used: {time.time() - start}s")
+        
         scheduler.step()
 
         end = time.time()
         print(f"time used: {end - start}s")
 
         if epoch % 50 == 0:
-            torch.save(net, f"{save_dir}/base_model_{args.model_seed}_{epoch}.pt")
+            torch.save(net, f"{save_dir}/base_model_{args.model_seed}-{epoch}.pt")
+
+        if epoch % 10 == 0:
+            net.eval()
+            val_total = 0
+            val_correct = 0
+            with torch.no_grad():
+                for (inputs, targets) in valloader:
+                    inputs, targets = inputs.to(device), targets.to(device)
+                    outputs = net(inputs)
+                    _, predicted = outputs.max(1)
+                    val_total += targets.size(0)
+                    val_correct += predicted.eq(targets).sum().item()
+            
+            net.train()
+            
+            print(f'Epoch {epoch} Validation Acc: {val_correct / val_total}')
 
     net.eval()
 

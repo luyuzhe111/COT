@@ -28,22 +28,25 @@ def main():
     parser.add_argument('--n_val_samples', default=10000, type=int)
     parser.add_argument('--n_test_samples', default=10000, type=int)
     parser.add_argument('--dataset_seed', default=1, type=int)
+    parser.add_argument('--pretrained', action='store_true', default=False)
     parser.add_argument('--model_seed', default=1, type=int)
     parser.add_argument('--ckpt_epoch', default=20, type=int)
 
     # synthetic shifts configs
     parser.add_argument('--data_path', default='./data/CIFAR-10', type=str)
-    parser.add_argument('--shift', default='synthetic', type=str)
+    parser.add_argument('--subpopulation', default='same', type=str)
     parser.add_argument('--corruption_path', default='./data/CIFAR-10-C/', type=str)
-    parser.add_argument('--corruption', default='brightness', type=str)
-    parser.add_argument('--severity', default=1, type=int)
+    parser.add_argument('--corruption', default='clean', type=str)
+    parser.add_argument('--severity', default=0, type=int)
     
     args = parser.parse_args()
 
     print(vars(args))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    pretrained = args.pretrained
     model_seed = args.model_seed
+    model_epoch = args.ckpt_epoch
     n_test_sample = args.n_test_samples
     dsname = args.dataset
     corruption = args.corruption
@@ -52,6 +55,7 @@ def main():
     # load in iid data for calibration
     _, val_set = load_train_dataset(dsname=dsname,
                                     iid_path=args.data_path,
+                                    pretrained=pretrained,
                                     n_val_samples=args.n_val_samples,
                                     seed=args.dataset_seed)
 
@@ -59,29 +63,38 @@ def main():
 
     # load in ood test data 
     valset_ood = load_test_dataset(dsname=dsname,
+                                   subpopulation=args.subpopulation,
                                    iid_path=args.data_path,
                                    corr_path=args.corruption_path,
-                                   corr_type=args.corruption,
+                                   corr=args.corruption,
                                    corr_sev=args.severity,
+                                   pretrained=pretrained,
                                    n_test_sample=n_test_sample)
 
     val_ood_loader = torch.utils.data.DataLoader(valset_ood, batch_size=args.batch_size, shuffle=True, num_workers=4)
 
     n_test_sample = len(valset_ood)
 
-    cache_dir = f"./cache/{dsname}/{args.arch}_{model_seed}"
+    if pretrained:
+        cache_dir = f"./cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/pretrained"
+    else:
+        cache_dir = f"./cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/scratch"
+
     os.makedirs(cache_dir, exist_ok=True)
-    cache_id_dir = f"{cache_dir}/id_{model_seed}-{args.ckpt_epoch}_d{args.dataset_seed}.pkl"
-    cache_od_dir = f"{cache_dir}/od_{model_seed}_{args.ckpt_epoch}-{args.severity}_n{n_test_sample}.pkl"
+    cache_id_dir = f"{cache_dir}/id_m{model_seed}-{model_epoch}_d{args.dataset_seed}.pkl"
+    cache_od_dir = f"{cache_dir}/od_p{args.subpopulation}_m{model_seed}-{model_epoch}_c{corruption}-{severity}_n{n_test_sample}.pkl"
 
-    save_dir_path = f"./checkpoints/{dsname}/{args.arch}"
+    if pretrained:
+        save_dir_path = f"./checkpoints/{dsname}/{args.arch}/pretrained"
+    else:
+        save_dir_path = f"./checkpoints/{dsname}/{args.arch}/scratch"
 
-    base_model = torch.load(f"{save_dir_path}/base_model_{args.model_seed}_{args.ckpt_epoch}.pt", map_location=device)
-    model = base_model.eval()
+    model = torch.load(f"{save_dir_path}/base_model_{args.model_seed}-{model_epoch}.pt", map_location=device)
+    model.eval()
     
     # use temperature scaling to calibrate model
     print('calibrating models...')
-    temp_dir = f"{save_dir_path}/base_model_{args.model_seed}-{args.ckpt_epoch}_temp.json"
+    temp_dir = f"{cache_dir}/base_model_{args.model_seed}-{model_epoch}_temp.json"
     model = calibrate(model, val_iid_loader, temp_dir)
     print('calibration done.')
 
@@ -130,7 +143,10 @@ def main():
         est = ( ot.emd2(weights, weights, M, numItermax=10**8) / 2 + conf_gap ).item()
     
     elif metric == 'ATC':
-        cache_dir = f"cache/{dsname}/{args.arch}_{model_seed}/iid_result.json"
+        if pretrained:
+            cache_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/pretrained_atc_threshold.json"
+        else:
+            cache_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/scratch_atc_threshold.json"
         if os.path.exists(cache_dir):
             with open(cache_dir, 'r') as f:
                 data = json.load(f)
@@ -152,7 +168,10 @@ def main():
     print('------------------')
     print()
 
-    result_dir = f"results/{dsname}/{args.arch}_{model_seed}/{args.metric}_{n_test_sample}/{corruption}.json"
+    if pretrained:
+        result_dir = f"results/{dsname}/pretrained/{args.arch}_{model_seed}-{model_epoch}/{args.metric}_{n_test_sample}/{corruption}.json"
+    else:
+        result_dir = f"results/{dsname}/scratch/{args.arch}_{model_seed}-{model_epoch}/{args.metric}_{n_test_sample}/{corruption}.json"
 
     print(result_dir, os.path.dirname(result_dir), os.path.basename(result_dir))
     os.makedirs(os.path.dirname(result_dir), exist_ok=True)
@@ -171,6 +190,8 @@ def main():
         'ref': metric,
         'acc': float(ood_acc),
         'error': 1 - ood_acc,
+        'subpopulation': args.subpopulation,
+        'pretrained': pretrained
     })
 
     with open(result_dir, 'w') as f:

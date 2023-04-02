@@ -24,9 +24,9 @@ def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True)
     elif dsname == 'Tiny-ImageNet':
         dataset = TinyImageNet(iid_path, split='train', transform=transform)
     
-    elif dsname == 'Living-17':
-        dataset = get_breeds_dataset(iid_path, split='train', transform=transform)
-    
+    elif dsname in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
+        dataset = get_breeds_dataset(iid_path, dsname, 'same', split='train', transform=transform)
+
     else:
         raise ValueError('unknown dataset')
 
@@ -52,10 +52,10 @@ def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True)
     return train_set, val_set
 
 
-def load_test_dataset(dsname, iid_path, corr_path, corr_type, corr_sev, n_test_sample, seed=1, pretrained=True):
+def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev, n_test_sample, seed=1, pretrained=True):
     transform = get_transforms(dsname, 'test', pretrained)
 
-    # test on in-distribution data
+    # test on non-corrupted data
     if dsname == "CIFAR-10":
         dataset = CIFAR10(iid_path, train=False, transform=transform, download=True)
     elif dsname == "CIFAR-20":
@@ -64,30 +64,37 @@ def load_test_dataset(dsname, iid_path, corr_path, corr_type, corr_sev, n_test_s
         dataset = CIFAR100(iid_path, train=False, transform=transform, download=True)
     elif dsname == 'Tiny-ImageNet':
         dataset = TinyImageNet(iid_path, split='test', transform=transform)
+    elif dsname in ['Living-17', 'Nonliving-26']:
+        dataset = get_breeds_dataset(iid_path, dsname, subpopulation, split='test', transform=transform)
     else:
         raise ValueError('unknown dataset')
     
     # test on corrupted data
-    if corr_sev > 0:
+    if corr != 'clean':
         if dsname in ['CIFAR-10', 'CIFAR-100']:
-            path_images = os.path.join(corr_path, corr_type + '.npy')
+            path_images = os.path.join(corr_path, corr + '.npy')
             path_labels = os.path.join(corr_path, 'labels.npy')
             dataset.data = np.load(path_images)[(corr_sev - 1) * 10000:corr_sev * 10000]
             dataset.targets = list(np.load(path_labels)[(corr_sev - 1) * 10000:corr_sev * 10000])
             dataset.targets = [int(item) for item in dataset.targets]
         
         elif dsname == 'CIFAR-20':
-            path_images = os.path.join(corr_path, corr_type + '.npy')
+            path_images = os.path.join(corr_path, corr + '.npy')
             path_labels = os.path.join(corr_path, 'labels.npy')
             dataset.data = np.load(path_images)[(corr_sev - 1) * 10000:corr_sev * 10000]
             dataset.targets = list(get_coarse_labels(np.load(path_labels))[(corr_sev - 1) * 10000:corr_sev * 10000])
             dataset.targets = [int(item) for item in dataset.targets]
 
         elif dsname == 'Tiny-ImageNet':
-            dataset = TinyImageNetCorrupted(corr_path, corr_type, corr_sev, transform=transform)
+            dataset = TinyImageNetCorrupted(corr_path, corr, corr_sev, transform=transform)
+        
+        elif dsname in ['Living-17', 'Nonliving-26']:
+            dataset = get_breeds_dataset(
+                iid_path, dsname, subpopulation, split='test', transform=transform, corr=corr, corr_sev=corr_sev 
+            )
 
     # randomly subsample test set to see sample complexity
-    if n_test_sample < 10000:
+    if n_test_sample != -1 and n_test_sample < 10000:
         torch.manual_seed(seed)
         torch.cuda.manual_seed(seed)
         indices = torch.randperm(10000)[:n_test_sample]

@@ -10,4 +10,4 @@ conda activate ood
 cd /usr/workspace/lu35/Documents/fot
 
 # ResNet50
-python train_model.py --dataset Living-17 --data_path ./data/imagenetv1 --arch resnet50 --batch_size 128 --train_epoch 450 --lr 0.1
+python train_model.py --dataset Living-17 --data_path ./data/ImageNet --arch resnet50 --batch_size 128 --train_epoch 450 --lr 0.1 --model_seed 1
