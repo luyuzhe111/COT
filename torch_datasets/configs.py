@@ -32,6 +32,7 @@ def get_n_classes(dataset):
         'Nonliving-26': 26,
         'Entity-13': 13,
         'Entity-30': 30,
+        'FMoW': 62
     }
 
     return n_class[dataset]
@@ -59,6 +60,12 @@ def get_transforms(dataset, split, pretrained):
             transforms.Normalize([0.4717, 0.4499, 0.3837], [0.2600, 0.2516, 0.2575])
 		])
     
+    elif dataset == 'FMoW':
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+		])
+    
     return transform
 
 def get_optimizer(dsname, net, lr, pretrained):
@@ -71,6 +78,9 @@ def get_optimizer(dsname, net, lr, pretrained):
     elif dsname in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
         return optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
 
+    elif dsname == 'FMoW':
+        return optim.Adam(net.parameters(), lr=lr)
+
 
 def get_lr_scheduler(dsname, opt, pretrained, T_max=-1):
     if dsname in ['CIFAR-10', 'CIFAR-100', 'Tiny-ImageNet']:
@@ -82,6 +92,9 @@ def get_lr_scheduler(dsname, opt, pretrained, T_max=-1):
         return optim.lr_scheduler.MultiStepLR(opt, milestones=[150, 300], gamma=0.1)
     elif dsname in ['Entity-13', 'Entity-30']:
         return optim.lr_scheduler.MultiStepLR(opt, milestones=[100, 200], gamma=0.1)
+    
+    elif dsname == 'FMoW':
+        return optim.lr_scheduler.StepLR(opt, step_size=1, gamma=0.96)
 
 
 def get_models(arch, n_class, model_seed, pretrained):

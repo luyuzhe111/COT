@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--lr', default=0.001, type=float)
     parser.add_argument('--pretrained', action='store_true', default=False)
     parser.add_argument('--train_epoch', default=20, type=int)
+    parser.add_argument('--resume_epoch', default=0, type=int)
 
     parser.add_argument('--dataset_seed', default=1, type=int)
     parser.add_argument('--model_seed', default=1, type=int)
@@ -45,29 +46,38 @@ def main():
                                      pretrained=args.pretrained,
                                      seed=args.dataset_seed)
     
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, num_workers=4, shuffle=True, pin_memory=True)
-    valloader = torch.utils.data.DataLoader(valset, batch_size=args.batch_size, num_workers=4, shuffle=False, pin_memory=True)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, num_workers=8, shuffle=True, pin_memory=True)
+    valloader = torch.utils.data.DataLoader(valset, batch_size=args.batch_size, num_workers=8, shuffle=False, pin_memory=True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # init and train base model
-    base_model = get_models(args.arch, n_class, args.model_seed, args.pretrained).to(device)
+    model = get_models(args.arch, n_class, args.model_seed, args.pretrained).to(device)
 
     n_device = torch.cuda.device_count()
-    base_model = torch.nn.DataParallel( base_model, device_ids=range(n_device) )
+    print('available devices:', n_device)
+    model = torch.nn.DataParallel( model, device_ids=range(n_device) )
     cudnn.benchmark = False
+
+    optimizer = get_optimizer(args.dataset, model, args.lr, args.pretrained)
+    scheduler = get_lr_scheduler(args.dataset, optimizer, args.pretrained, T_max=args.train_epoch)
+
+    resume_epoch = args.resume_epoch
+    if resume_epoch > 0:
+        ckpt_dir = f"{save_dir_path}/base_model_{args.model_seed}-{resume_epoch}.pt"
+        ckpt = torch.load(ckpt_dir, map_location=device)
+        model = ckpt['model']
+        optimizer = get_optimizer(args.dataset, model, args.lr, args.pretrained)
+        scheduler = get_lr_scheduler(args.dataset, optimizer, args.pretrained, T_max=args.train_epoch)
+        optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+        scheduler.load_state_dict(ckpt['optimizer_state_dict'])
     
     print('begin training...')
-    base_model = train(base_model, trainloader, valloader, save_dir_path, args, device)
-    base_model.eval()
-    torch.save(base_model, f"{save_dir_path}/base_model_{args.model_seed}-{args.train_epoch}.pt")
-    print('base model saved to', f"{save_dir_path}/base_model_{args.model_seed}-{args.train_epoch}.pt")
+    train(model, optimizer, scheduler, trainloader, valloader, save_dir_path, args, device)
 
 
-def train(net, trainloader, valloader, save_dir, args, device):
+def train(net, optimizer, scheduler, trainloader, valloader, save_dir, args, device):
     net.train()
-    optimizer = get_optimizer(args.dataset, net, args.lr, args.pretrained)
-    scheduler = get_lr_scheduler(args.dataset, optimizer, args.pretrained, T_max=args.train_epoch)
     criterion = nn.CrossEntropyLoss()
     scaler = torch.cuda.amp.GradScaler(enabled=True)
 
@@ -76,7 +86,13 @@ def train(net, trainloader, valloader, save_dir, args, device):
         correct = 0
         total = 0
         start = time.time()
-        for batch_idx, (inputs, targets) in enumerate(trainloader):
+
+        for batch_idx, items in enumerate(trainloader):
+            if len(items) == 2:
+                inputs, targets = items
+            elif len(items) == 3:
+                inputs, targets, infos = items
+
             inputs, targets = inputs.to(device), targets.to(device)
             optimizer.zero_grad()
             with torch.cuda.amp.autocast():
@@ -108,7 +124,12 @@ def train(net, trainloader, valloader, save_dir, args, device):
         print(f"time used: {end - start}s")
 
         if epoch % 50 == 0:
-            torch.save(net, f"{save_dir}/base_model_{args.model_seed}-{epoch}.pt")
+            torch.save({
+                'model': net, 
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict()
+            },
+            f"{save_dir}/base_model_{args.model_seed}-{epoch + args.resume_epoch}.pt")
 
         if epoch % 10 == 0:
             net.eval()
@@ -125,8 +146,18 @@ def train(net, trainloader, valloader, save_dir, args, device):
             net.train()
             
             print(f'Epoch {epoch} Validation Acc: {val_correct / val_total}')
+        
+        if args.resume_epoch + epoch >= args.train_epoch:
+            break
 
     net.eval()
+    torch.save({
+        'model': net, 
+        'optimizer_state_dict': optimizer.state_dict(),
+        'scheduler_state_dict': scheduler.state_dict()
+    },
+    f"{save_dir}/base_model_{args.model_seed}-{args.train_epoch}.pt")
+    print('base model saved to', f"{save_dir}/base_model_{args.model_seed}-{args.train_epoch}.pt")
 
     return net
 
