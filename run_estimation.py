@@ -3,6 +3,7 @@ from projnorm import *
 from load_data import load_train_dataset, load_test_dataset
 from model import ResNet18, ResNet50, VGG11
 from misc.temperature_scaling import calibrate
+from misc.calibration import TempScaling
 from collections import Counter
 from utils import gather_outputs
 from misc.torch_interp import interpolate
@@ -44,6 +45,7 @@ def main():
     print(vars(args))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    metric = args.metric
     pretrained = args.pretrained
     model_seed = args.model_seed
     model_epoch = args.ckpt_epoch
@@ -51,6 +53,7 @@ def main():
     dsname = args.dataset
     corruption = args.corruption
     severity = args.severity
+    n_class = get_n_classes(args.dataset)
 
     # load in iid data for calibration
     _, val_set = load_train_dataset(dsname=dsname,
@@ -95,8 +98,13 @@ def main():
     
     # use temperature scaling to calibrate model
     print('calibrating models...')
-    temp_dir = f"{cache_dir}/base_model_{args.model_seed}-{model_epoch}_temp.json"
-    model = calibrate(model, val_iid_loader, temp_dir)
+    
+    opt_bias = True
+    if opt_bias:
+        temp_dir = f"{cache_dir}/base_model_{args.model_seed}-{model_epoch}_temp_with_bias.json"
+    else:
+        temp_dir = f"{cache_dir}/base_model_{args.model_seed}-{model_epoch}_temp_.json"
+    model = calibrate(model, n_class, opt_bias, val_iid_loader, temp_dir)
     print('calibration done.')
 
     iid_acts, iid_preds, iid_tars = gather_outputs(model, val_iid_loader, device, cache_id_dir)
@@ -117,7 +125,6 @@ def main():
     print('------------------')
     print()
 
-    n_class = get_n_classes(args.dataset)
     ood_preds_count = Counter(ood_preds.tolist())
     ood_tars_count = Counter(ood_tars.tolist())
 
@@ -131,8 +138,6 @@ def main():
     print("ood pseudo-real label tv:", sum(abs(np.array(ood_preds_dist) - np.array(ood_tars_dist))) / 2 )
     print('------------------')
     print()
-
-    metric = args.metric
 
     if metric == 'COT':
         exp_label_counts = [int(i * n_test_sample) for i in get_expected_label_distribution(args.dataset)]

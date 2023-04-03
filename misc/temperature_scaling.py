@@ -3,6 +3,7 @@ import json
 import torch
 from torch import nn, optim
 from torch.nn import functional as F
+from tqdm import tqdm
 
 
 class ModelWithTemperature(nn.Module):
@@ -13,10 +14,12 @@ class ModelWithTemperature(nn.Module):
         NB: Output of the neural network should be the classification logits,
             NOT the softmax (or log softmax)!
     """
-    def __init__(self, model):
+    def __init__(self, model, n_class, opt_bias=False):
         super(ModelWithTemperature, self).__init__()
         self.model = model
         self.temperature = nn.Parameter(torch.ones(1) * 1.5)
+        self.bias = nn.Parameter(torch.ones(1, n_class))
+        self.opt_bias = opt_bias
         
     def forward(self, input):
         logits = self.model(input)
@@ -26,12 +29,11 @@ class ModelWithTemperature(nn.Module):
         """
         Perform temperature scaling on logits
         """
-        # Expand temperature to match the size of logits
-        temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))
-        return logits / temperature
+        return logits / self.temperature + self.bias
     
-    def set_temperature(self, temp):
+    def set_temperature(self, temp, bias):
         self.temperature = nn.Parameter(torch.ones(1) * temp)
+        self.bias = nn.Parameter(torch.as_tensor(bias))
         self.cuda()
 
     # This function probably should live outside of this class, but whatever
@@ -49,7 +51,12 @@ class ModelWithTemperature(nn.Module):
         logits_list = []
         labels_list = []
         with torch.no_grad():
-            for input, label in valid_loader:
+            for items in tqdm(valid_loader):
+                if len(items) == 2:
+                    input, label = items
+                else:
+                    input, label, extra = items
+                
                 input = input.cuda()
                 logits = self.model(input)
                 logits_list.append(logits)
@@ -63,7 +70,13 @@ class ModelWithTemperature(nn.Module):
         print('Before temperature - NLL: %.3f, ECE: %.3f' % (before_temperature_nll, before_temperature_ece))
 
         # Next: optimize the temperature w.r.t. NLL
-        optimizer = optim.LBFGS([self.temperature], lr=0.01, max_iter=5000)
+        if self.opt_bias:
+            params = [self.temperature, self.bias]
+        else:
+            params = [self.temperature]
+        
+        optimizer = optim.LBFGS(params, lr=0.01, max_iter=1e7)
+       
 
         def eval():
             optimizer.zero_grad()
@@ -77,6 +90,12 @@ class ModelWithTemperature(nn.Module):
         after_temperature_ece = ece_criterion(self.temperature_scale(logits), labels).item()
         print('Optimal temperature: %.3f' % self.temperature.item())
         print('After temperature - NLL: %.3f, ECE: %.3f' % (after_temperature_nll, after_temperature_ece))
+        
+        conf = round( torch.nn.functional.softmax(self.temperature_scale(logits), dim=1).amax(1).mean().item(), 3 )
+        acc = round( (torch.argmax(logits, dim=1) == labels).float().mean().item(), 3 )
+
+        print('TS Conf:', conf)
+        print('TS Acc:', acc)
 
         return self
 
@@ -122,19 +141,20 @@ class _ECELoss(nn.Module):
         return ece
     
 
-def calibrate(model, val_loader, temp_dir):
+def calibrate(model, n_class, opt_bias, val_loader, temp_dir):
     if os.path.exists(temp_dir):
         with open(temp_dir, 'r') as f:
             temp = json.load(f)
 
-        model = ModelWithTemperature(model)
-        model.set_temperature(temp)
+        model = ModelWithTemperature(model, n_class, opt_bias)
+        model.set_temperature(temp['t'], temp['bias'])
     else:
-        model = ModelWithTemperature(model)
+        model = ModelWithTemperature(model, n_class, opt_bias)
         model.find_temperature(val_loader)
         temp = model.temperature.item()
+        bias = model.bias.tolist()
 
         with open(temp_dir, 'w') as f:
-            json.dump(temp, f)
+            json.dump({'t': temp, 'bias': bias}, f)
 
     return model

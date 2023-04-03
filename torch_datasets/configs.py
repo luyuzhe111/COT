@@ -21,6 +21,7 @@ def get_expected_label_distribution(dataset):
         label_counts = Counter(val_set.y_array.tolist())
         total_count = len(val_set.y_array)
         label_dist = [label_counts[i] / total_count for i in range(len(label_counts))]
+        return label_dist
     
     config = {
         'CIFAR-10': [1 / 10] * 10,
@@ -28,7 +29,6 @@ def get_expected_label_distribution(dataset):
         'tiny-imagenet': [1 / 200] * 200,
         'Living-17': [1 / 17] * 17,
         'Nonliving-26': [1 / 26] * 26,
-        'FMoW': label_dist
     }
 
     return config[dataset]
