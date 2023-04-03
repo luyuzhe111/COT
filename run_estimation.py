@@ -89,7 +89,8 @@ def main():
     else:
         save_dir_path = f"./checkpoints/{dsname}/{args.arch}/scratch"
 
-    model = torch.load(f"{save_dir_path}/base_model_{args.model_seed}-{model_epoch}.pt", map_location=device)
+    ckpt = torch.load(f"{save_dir_path}/base_model_{args.model_seed}-{model_epoch}.pt", map_location=device)
+    model = ckpt['model']
     model.eval()
     
     # use temperature scaling to calibrate model
@@ -118,12 +119,16 @@ def main():
 
     n_class = get_n_classes(args.dataset)
     ood_preds_count = Counter(ood_preds.tolist())
+    ood_tars_count = Counter(ood_tars.tolist())
 
-    ood_tars_dist = get_expected_label_distribution(args.dataset)
+    iid_tars_dist = get_expected_label_distribution(args.dataset)
+    ood_tars_dist = [ood_tars_count[i] / len(ood_acts) for i in range(n_class)]
     ood_preds_dist = [ood_preds_count[i] / len(ood_acts) for i in range(n_class)]
 
     print('------------------')
-    print("ood pseudo label tv:", sum(abs(np.array(ood_tars_dist) - np.array(ood_preds_dist))) / 2 )
+    print("ood real label tv:", sum(abs(np.array(ood_tars_dist) - np.array(iid_tars_dist))) / 2 )
+    print("ood pseudo label tv:", sum(abs(np.array(ood_preds_dist) - np.array(iid_tars_dist))) / 2 )
+    print("ood pseudo-real label tv:", sum(abs(np.array(ood_preds_dist) - np.array(ood_tars_dist))) / 2 )
     print('------------------')
     print()
 
@@ -131,10 +136,8 @@ def main():
 
     if metric == 'COT':
         exp_label_counts = [int(i * n_test_sample) for i in get_expected_label_distribution(args.dataset)]
-        all_labels = []
-        for i in range(len(exp_label_counts)):
-            all_labels.extend([i] * exp_label_counts[i])
-        
+        all_labels = sum([[i] * exp_label_counts[i] for i in range(len(exp_label_counts))], [])
+
         iid_acts = nn.functional.one_hot( torch.as_tensor(all_labels) )
         ood_acts = nn.functional.softmax(ood_acts, dim=-1)
         
@@ -168,10 +171,11 @@ def main():
     print('------------------')
     print()
 
+    n_test_str = n_test_sample if dsname not in ['FMoW'] else -1
     if pretrained:
-        result_dir = f"results/{dsname}/pretrained/{args.arch}_{model_seed}-{model_epoch}/{args.metric}_{n_test_sample}/{corruption}.json"
+        result_dir = f"results/{dsname}/pretrained/{args.arch}_{model_seed}-{model_epoch}/{args.metric}_{n_test_str}/{corruption}.json"
     else:
-        result_dir = f"results/{dsname}/scratch/{args.arch}_{model_seed}-{model_epoch}/{args.metric}_{n_test_sample}/{corruption}.json"
+        result_dir = f"results/{dsname}/scratch/{args.arch}_{model_seed}-{model_epoch}/{args.metric}_{n_test_str}/{corruption}.json"
 
     print(result_dir, os.path.dirname(result_dir), os.path.basename(result_dir))
     os.makedirs(os.path.dirname(result_dir), exist_ok=True)

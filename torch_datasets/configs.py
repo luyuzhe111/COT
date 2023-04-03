@@ -1,6 +1,9 @@
 import torchvision.transforms as transforms
 import torch.optim as optim
 from model import ResNet18, ResNet50, DenseNet121, VGG11, ViT_B_16
+from wilds.datasets.fmow_dataset import FMoWDataset
+from collections import Counter
+
 
 def get_train_val_size(dataset):
     config = {
@@ -12,12 +15,20 @@ def get_train_val_size(dataset):
     return config[dataset]
 
 def get_expected_label_distribution(dataset):
+    if dataset == 'FMoW':
+        full_set = FMoWDataset(download=True, root_dir='./data', use_ood_val=True)
+        val_set = full_set.get_subset('id_val', transform=None)
+        label_counts = Counter(val_set.y_array.tolist())
+        total_count = len(val_set.y_array)
+        label_dist = [label_counts[i] / total_count for i in range(len(label_counts))]
+    
     config = {
         'CIFAR-10': [1 / 10] * 10,
         'CIFAR-100': [1 / 100] * 100,
         'tiny-imagenet': [1 / 200] * 200,
         'Living-17': [1 / 17] * 17,
-        'Nonliving-26': [1 / 26] * 26
+        'Nonliving-26': [1 / 26] * 26,
+        'FMoW': label_dist
     }
 
     return config[dataset]

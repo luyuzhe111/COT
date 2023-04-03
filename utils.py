@@ -73,7 +73,11 @@ def compute_t(net, iid_loader):
     misclassified = 0
     res = []
     with torch.no_grad():
-        for _, (inputs, targets) in enumerate(tqdm(iid_loader)):
+        for _, items in enumerate(tqdm(iid_loader)):
+            if len(items) == 2:
+                (inputs, targets) = items
+            else:
+                inputs, targets, extras = items
             inputs, targets = inputs.cuda(), targets.cuda()
             outputs = net(inputs)
             _, predicted = outputs.max(1)
@@ -116,7 +120,12 @@ def gather_outputs(model, dataloader, device, cache_dir):
         tars = []
         print('computing result for', cache_dir)
         with torch.no_grad():
-            for inputs, targets in tqdm(dataloader):
+            for items in tqdm(dataloader):
+                if len(items) == 2:
+                    inputs, targets = items
+                else:
+                    inputs, targets, infos = items
+                    
                 inputs, targets = inputs.to(device), targets.to(device)
                 outputs = model(inputs)
 

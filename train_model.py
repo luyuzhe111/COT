@@ -51,7 +51,7 @@ def main():
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # init and train base model
+    # init and train base modeltrain_model.py
     model = get_models(args.arch, n_class, args.model_seed, args.pretrained).to(device)
 
     n_device = torch.cuda.device_count()
@@ -136,7 +136,12 @@ def train(net, optimizer, scheduler, trainloader, valloader, save_dir, args, dev
             val_total = 0
             val_correct = 0
             with torch.no_grad():
-                for (inputs, targets) in valloader:
+                for items in valloader:
+                    if len(items) == 2:
+                        (inputs, targets) = items
+                    else:
+                        (inputs, targets, infos) = items
+                    
                     inputs, targets = inputs.to(device), targets.to(device)
                     outputs = net(inputs)
                     _, predicted = outputs.max(1)

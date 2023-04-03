@@ -7,6 +7,8 @@ from torch_datasets.configs import get_transforms
 from torch_datasets.breeds import get_breeds_dataset
 from torch_datasets.tiny_imagenet import TinyImageNet, TinyImageNetCorrupted
 from torch_datasets.cifar20 import CIFAR20, get_coarse_labels
+from wilds.datasets.fmow_dataset import FMoWDataset
+from wilds.datasets.wilds_dataset import WILDSSubset
 
 
 def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True):
@@ -26,28 +28,36 @@ def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True)
     
     elif dsname in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
         dataset = get_breeds_dataset(iid_path, dsname, 'same', split='train', transform=transform)
+    
+    elif dsname == 'FMoW':
+        dataset = FMoWDataset(download=False, root_dir=f"{iid_path}", use_ood_val=True)
 
     else:
         raise ValueError('unknown dataset')
 
-    assert n_val_samples > 0, 'no validation set'
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    n_samples = len(dataset.data)
-    index_permute = torch.randperm(n_samples)
-    dataset.data = [dataset.data[i] for i in index_permute]
-    dataset.targets = [dataset.targets[i] for i in index_permute]
+    
+    if dsname == 'FMoW':
+        train_set = dataset.get_subset('train', transform=transform)
+        val_set = dataset.get_subset('id_val', transform = transform)
+    else:
+        assert n_val_samples > 0, 'no validation set'
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        n_samples = len(dataset.data)
+        index_permute = torch.randperm(n_samples)
+        dataset.data = [dataset.data[i] for i in index_permute]
+        dataset.targets = [dataset.targets[i] for i in index_permute]
 
-    train_size = n_samples - n_val_samples
+        train_size = n_samples - n_val_samples
 
-    train_inds = index_permute[:train_size]
-    val_inds = index_permute[train_size:]
+        train_inds = index_permute[:train_size]
+        val_inds = index_permute[train_size:]
 
-    train_set = torch.utils.data.Subset(dataset, train_inds)
-    val_set = torch.utils.data.Subset(dataset, val_inds)
+        train_set = torch.utils.data.Subset(dataset, train_inds)
+        val_set = torch.utils.data.Subset(dataset, val_inds)
 
-    print("train size:", len(train_set))
-    print("valid size:", len(val_set))
+        print("train size:", len(train_set))
+        print("valid size:", len(val_set))
 
     return train_set, val_set
 
@@ -66,6 +76,8 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
         dataset = TinyImageNet(iid_path, split='test', transform=transform)
     elif dsname in ['Living-17', 'Nonliving-26']:
         dataset = get_breeds_dataset(iid_path, dsname, subpopulation, split='test', transform=transform)
+    elif dsname == 'FMoW':
+        dataset = FMoWDataset(download=False, root_dir=iid_path, use_ood_val=True)
     else:
         raise ValueError('unknown dataset')
     
@@ -92,14 +104,29 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
             dataset = get_breeds_dataset(
                 iid_path, dsname, subpopulation, split='test', transform=transform, corr=corr, corr_sev=corr_sev 
             )
+        
+        elif dsname == 'FMoW':
+            full_dataset = FMoWDataset(download=True, root_dir=iid_path, use_ood_val=True)
+            if corr == '13-16':
+                full_testset = full_dataset.get_subset('val', transform=transform)
+
+            elif corr == '16-18':
+                full_testset = full_dataset.get_subset('test', transform=transform)
+            
+            if corr_sev == 0:
+                dataset = full_testset
+            else:
+                groups = full_dataset._eval_groupers['region'].metadata_to_group(full_testset.metadata_array)
+                ind = np.where(groups== (corr_sev - 1) )[0]
+                dataset = WILDSSubset(full_testset, ind, None)
 
     # randomly subsample test set to see sample complexity
-    if n_test_sample != -1 and n_test_sample < 10000:
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed(seed)
-        indices = torch.randperm(10000)[:n_test_sample]
-        dataset = torch.utils.data.Subset(dataset, indices)
-        print('number of test data: ', len(dataset))
+    # if n_test_sample != -1 and n_test_sample < 10000:
+    #     torch.manual_seed(seed)
+    #     torch.cuda.manual_seed(seed)
+    #     indices = torch.randperm(10000)[:n_test_sample]
+    #     dataset = torch.utils.data.Subset(dataset, indices)
+    #     print('number of test data: ', len(dataset))
 
     return dataset
         
