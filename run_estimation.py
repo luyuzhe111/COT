@@ -3,7 +3,6 @@ from projnorm import *
 from load_data import load_train_dataset, load_test_dataset
 from model import ResNet18, ResNet50, VGG11
 from misc.temperature_scaling import calibrate
-from misc.calibration import TempScaling
 from collections import Counter
 from utils import gather_outputs
 from misc.torch_interp import interpolate
@@ -11,7 +10,7 @@ from torch_datasets.configs import get_expected_label_distribution, get_n_classe
 import numpy as np
 import json
 import torch
-from utils import compute_t
+from utils import compute_t, compute_cott
 import os
 from tqdm import tqdm
 import ot
@@ -150,11 +149,34 @@ def main():
         weights = torch.as_tensor([]).to(device)
         est = ( ot.emd2(weights, weights, M, numItermax=10**8) / 2 + conf_gap ).item()
     
+    elif metric == 'COTT':
+        thresholds = compute_cott(model, val_iid_loader, n_class)
+
+        exp_labels = [int(i * n_test_sample) for i in get_expected_label_distribution(args.dataset)]
+        all_labels = nn.functional.one_hot(
+            torch.as_tensor( sum([[i] * exp_labels[i] for i in range(len(exp_labels))], []) )
+        )
+        ood_acts = nn.functional.softmax(ood_acts, dim=-1)
+
+        M = torch.sum( torch.abs( all_labels.unsqueeze(1) - ood_acts.unsqueeze(0) ), dim=-1 )
+        weights = torch.as_tensor([])
+        Pi = ot.emd(weights, weights, M, numItermax=10**8)
+
+        est = 0
+        for i in range(n_class):
+            clss_tar_inds = ( torch.argmax(all_labels, dim=1) == i )
+            clss_scores = Pi[ label_inds[clss_tar_inds], matched_softmax_inds[clss_tar_inds] ]
+            clss_est = ( clss_scores > thresholds[i] ).sum()
+            est += clss_est
+        
+        est = est / n_test_sample
+    
     elif metric == 'ATC':
         if pretrained:
             cache_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/pretrained_atc_threshold.json"
         else:
             cache_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/scratch_atc_threshold.json"
+        
         if os.path.exists(cache_dir):
             with open(cache_dir, 'r') as f:
                 data = json.load(f)

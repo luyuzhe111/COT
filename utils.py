@@ -3,8 +3,7 @@ import torch.nn as nn
 import os
 import pickle
 from tqdm import tqdm
-import contextlib
-
+import ot
 
 def evaluation(net, testloader):
     net.eval()
@@ -90,22 +89,46 @@ def compute_t(net, iid_loader):
     return sorted_s_softmax[misclassified - 1] + 1e-9
 
 
-def compute_t_vec(net, iid_loader):
+def compute_cott(net, iid_loader, n_class):
     net.eval()
-    misclassified = 0
-    res = []
+    softmax_vecs = []
+    preds, tars = [], []
     with torch.no_grad():
-        for _, (inputs, targets) in enumerate(tqdm(iid_loader)):
+        for _, items in enumerate(tqdm(iid_loader)):
+            if len(items) == 2:
+                (inputs, targets) = items
+            else:
+                inputs, targets, extras = items
             inputs, targets = inputs.cuda(), targets.cuda()
             outputs = net(inputs)
-            _, predicted = outputs.max(1)
-            misclassified += targets.size(0) - predicted.eq(targets).sum().item()
-            res.append(outputs)
+            _, prediction = outputs.max(1)
 
-    logits = torch.cat(res)
+            preds.extend( prediction.tolist() )
+            tars.extend( targets.tolist() )
+            softmax_vecs.append( nn.functional.softmax(outputs, dim=1).cpu() )
+    
+    thresholds = torch.zeros(n_class)
+    preds, tars  = torch.as_tensor(preds), torch.as_tensor(tars)
+    softmax_vecs = torch.cat(softmax_vecs, dim=0)
+    target_vecs = nn.functional.one_hot(tars)
 
-    sorted_logits = torch.sort(logits, dim=0)[0]
-    return sorted_logits[misclassified - 1, :] + 1e-9
+    M = torch.sum(
+        torch.abs( target_vecs.unsqueeze(1) - softmax_vecs.unsqueeze(0) ), dim=-1 
+    )
+    weights = torch.as_tensor([])
+    Pi = ot.emd(weights, weights, M, numItermax=10**8)
+    label_inds = Pi.nonzero()[:, 0]
+    matched_softmax_inds = Pi.nonzero()[:, 1]
+
+    for i in range(n_class):
+        clss_tar_inds = ( tars == i )
+        n_correct = (preds == i).eq(clss_tar_inds).sum()
+        clss_scores = torch.sort (
+            Pi[ label_inds[clss_tar_inds], matched_softmax_inds[clss_tar_inds] ]
+        )[0]
+        thresholds[i] = clss_scores[n_correct - 1]
+
+    return thresholds
 
 
 def gather_outputs(model, dataloader, device, cache_dir):
