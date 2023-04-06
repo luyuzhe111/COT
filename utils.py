@@ -73,10 +73,7 @@ def compute_t(net, iid_loader):
     res = []
     with torch.no_grad():
         for _, items in enumerate(tqdm(iid_loader)):
-            if len(items) == 2:
-                (inputs, targets) = items
-            else:
-                inputs, targets, extras = items
+            inputs, targets = items[0], items[1]
             inputs, targets = inputs.cuda(), targets.cuda()
             outputs = net(inputs)
             _, predicted = outputs.max(1)
@@ -89,16 +86,16 @@ def compute_t(net, iid_loader):
     return sorted_s_softmax[misclassified - 1] + 1e-9
 
 
+
+
+
 def compute_cott(net, iid_loader, n_class):
     net.eval()
     softmax_vecs = []
     preds, tars = [], []
     with torch.no_grad():
         for _, items in enumerate(tqdm(iid_loader)):
-            if len(items) == 2:
-                (inputs, targets) = items
-            else:
-                inputs, targets, extras = items
+            inputs, targets = items[0], items[1]
             inputs, targets = inputs.cuda(), targets.cuda()
             outputs = net(inputs)
             _, prediction = outputs.max(1)
@@ -112,6 +109,7 @@ def compute_cott(net, iid_loader, n_class):
     softmax_vecs = torch.cat(softmax_vecs, dim=0)
     target_vecs = nn.functional.one_hot(tars)
 
+    print('computing assignment...')
     M = torch.sum(
         torch.abs( target_vecs.unsqueeze(1) - softmax_vecs.unsqueeze(0) ), dim=-1 
     )
@@ -119,12 +117,13 @@ def compute_cott(net, iid_loader, n_class):
     Pi = ot.emd(weights, weights, M, numItermax=10**8)
     label_inds = Pi.nonzero()[:, 0]
     matched_softmax_inds = Pi.nonzero()[:, 1]
+    print('done.')
 
     for i in range(n_class):
         clss_tar_inds = ( tars == i )
-        n_correct = (preds == i).eq(clss_tar_inds).sum()
+        n_correct = (preds[clss_tar_inds]).eq(tars[clss_tar_inds]).sum()
         clss_scores = torch.sort (
-            Pi[ label_inds[clss_tar_inds], matched_softmax_inds[clss_tar_inds] ]
+            M[ label_inds[clss_tar_inds], matched_softmax_inds[clss_tar_inds] ]
         )[0]
         thresholds[i] = clss_scores[n_correct - 1]
 
@@ -144,11 +143,7 @@ def gather_outputs(model, dataloader, device, cache_dir):
         print('computing result for', cache_dir)
         with torch.no_grad():
             for items in tqdm(dataloader):
-                if len(items) == 2:
-                    inputs, targets = items
-                else:
-                    inputs, targets, infos = items
-                    
+                inputs, targets = items[0], items[1]                   
                 inputs, targets = inputs.to(device), targets.to(device)
                 outputs = model(inputs)
 

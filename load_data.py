@@ -8,6 +8,7 @@ from torch_datasets.breeds import get_breeds_dataset
 from torch_datasets.tiny_imagenet import TinyImageNet, TinyImageNetCorrupted
 from torch_datasets.cifar20 import CIFAR20, get_coarse_labels
 from wilds.datasets.fmow_dataset import FMoWDataset
+from wilds.datasets.rxrx1_dataset import RxRx1Dataset
 from wilds.datasets.wilds_dataset import WILDSSubset
 
 
@@ -31,14 +32,19 @@ def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True)
     
     elif dsname == 'FMoW':
         dataset = FMoWDataset(download=False, root_dir=f"{iid_path}", use_ood_val=True)
+    
+    elif dsname == 'RxRx1':
+        dataset = RxRx1Dataset(download=True, root_dir=f"{iid_path}")
 
     else:
         raise ValueError('unknown dataset')
 
-    
     if dsname == 'FMoW':
         train_set = dataset.get_subset('train', transform=transform)
-        val_set = dataset.get_subset('id_val', transform = transform)
+        val_set = dataset.get_subset('id_val', transform=transform)
+    elif dsname == 'RxRx1':
+        train_set = dataset.get_subset('train', transform=get_transforms(dsname, 'train', pretrained))
+        val_set = dataset.get_subset('id_test', transform=get_transforms(dsname, 'val', pretrained))
     else:
         assert n_val_samples > 0, 'no validation set'
         torch.manual_seed(seed)

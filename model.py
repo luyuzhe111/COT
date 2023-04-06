@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
+from transformers import DistilBertForSequenceClassification, DistilBertModel
 
 
 def ViT_B_16(num_classes=10, seed=123, pretrained=True):
@@ -48,4 +49,28 @@ def VGG11(num_classes=10, seed=123, pretrained=True):
     vgg11 = models.vgg11(pretrained=pretrained).cuda()
     vgg11.classifier[-1] = nn.Linear(4096, num_classes).cuda()
     return vgg11
+
+
+class DistilBertClassifier(DistilBertForSequenceClassification):
+    def __init__(self, config):
+        super().__init__(config)
+
+    def __call__(self, x):
+        input_ids = x[:, :, 0]
+        attention_mask = x[:, :, 1]
+        outputs = super().__call__(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+        )[0]
+        return outputs
+    
+
+def initialize_bert_based_model(num_classes):
+    model = DistilBertClassifier.from_pretrained(
+        'distilbert-base-uncased',
+        num_labels=num_classes
+    )
+    return model
+
+
 

@@ -60,7 +60,7 @@ def main():
     cudnn.benchmark = False
 
     optimizer = get_optimizer(args.dataset, model, args.lr, args.pretrained)
-    scheduler = get_lr_scheduler(args.dataset, optimizer, args.pretrained, T_max=args.train_epoch)
+    scheduler = get_lr_scheduler(args.dataset, optimizer, args.pretrained, T_max=args.train_epoch * len(trainloader))
 
     resume_epoch = args.resume_epoch
     if resume_epoch > 0:
@@ -88,11 +88,7 @@ def train(net, optimizer, scheduler, trainloader, valloader, save_dir, args, dev
         start = time.time()
 
         for batch_idx, items in enumerate(trainloader):
-            if len(items) == 2:
-                inputs, targets = items
-            elif len(items) == 3:
-                inputs, targets, infos = items
-
+            inputs, targets = items[0], items[1]
             inputs, targets = inputs.to(device), targets.to(device)
             optimizer.zero_grad()
             with torch.cuda.amp.autocast():
@@ -117,8 +113,12 @@ def train(net, optimizer, scheduler, trainloader, valloader, save_dir, args, dev
 
             if batch_idx % 100 == 0:   
                 print(f"time used: {time.time() - start}s")
+            
+            if args.dataset == 'RxRx1':
+                scheduler.step()
         
-        scheduler.step()
+        if args.dataset != 'RxRx1':
+            scheduler.step()
 
         end = time.time()
         print(f"time used: {end - start}s")
@@ -137,11 +137,7 @@ def train(net, optimizer, scheduler, trainloader, valloader, save_dir, args, dev
             val_correct = 0
             with torch.no_grad():
                 for items in valloader:
-                    if len(items) == 2:
-                        (inputs, targets) = items
-                    else:
-                        (inputs, targets, infos) = items
-                    
+                    inputs, targets = items[0], items[1]
                     inputs, targets = inputs.to(device), targets.to(device)
                     outputs = net(inputs)
                     _, predicted = outputs.max(1)

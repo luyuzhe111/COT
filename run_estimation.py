@@ -1,21 +1,20 @@
 import argparse
-from projnorm import *
 from load_data import load_train_dataset, load_test_dataset
 from model import ResNet18, ResNet50, VGG11
 from misc.temperature_scaling import calibrate
 from collections import Counter
-from utils import gather_outputs
+from utils import gather_outputs, compute_t, compute_cott
 from misc.torch_interp import interpolate
-from torch_datasets.configs import get_expected_label_distribution, get_n_classes
-import numpy as np
-import json
-import torch
-from utils import compute_t, compute_cott
 import os
+import json
+import random
+import numpy as np
+import torch
+import torch.nn as nn
+from torch_datasets.configs import get_expected_label_distribution, get_n_classes
 from tqdm import tqdm
 import ot
-import ot.dr
-import torch.nn as nn
+
 
 
 def main():
@@ -139,37 +138,52 @@ def main():
     print()
 
     if metric == 'COT':
-        exp_label_counts = [int(i * n_test_sample) for i in get_expected_label_distribution(args.dataset)]
-        all_labels = sum([[i] * exp_label_counts[i] for i in range(len(exp_label_counts))], [])
-
-        iid_acts = nn.functional.one_hot( torch.as_tensor(all_labels) )
+        exp_labels = torch.as_tensor(random.choices(
+            list(range(n_class)), weights=get_expected_label_distribution(args.dataset), k=n_test_sample
+        ))
+        iid_acts = nn.functional.one_hot(exp_labels)
         ood_acts = nn.functional.softmax(ood_acts, dim=-1)
-        
-        M = torch.from_numpy(ot.dist(iid_acts.cpu().numpy(), ood_acts.cpu().numpy(), metric='minkowski', p=1)).to(device)
-        weights = torch.as_tensor([]).to(device)
+        M = torch.sum( torch.abs( iid_acts.unsqueeze(1) - ood_acts.unsqueeze(0) ), dim=-1 ) / 2
+        weights = torch.as_tensor([])
         est = ( ot.emd2(weights, weights, M, numItermax=10**8) / 2 + conf_gap ).item()
     
     elif metric == 'COTT':
-        thresholds = compute_cott(model, val_iid_loader, n_class)
+        if pretrained:
+            cache_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/pretrained_cott_threshold.json"
+        else:
+            cache_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/scratch_cott_threshold.json"
+        
+        if os.path.exists(cache_dir):
+            with open(cache_dir, 'r') as f:
+                data = json.load(f)
+                thresholds = data['t']
+        else:
+            with open(cache_dir, 'w') as f:
+                print('compute confidence threshold...')
+                thresholds = compute_cott(model, val_iid_loader, n_class)
+                json.dump({'t': thresholds.tolist()}, f)
 
-        exp_labels = [int(i * n_test_sample) for i in get_expected_label_distribution(args.dataset)]
-        all_labels = nn.functional.one_hot(
-            torch.as_tensor( sum([[i] * exp_labels[i] for i in range(len(exp_labels))], []) )
-        )
-        ood_acts = nn.functional.softmax(ood_acts, dim=-1)
+        exp_labels = torch.as_tensor( random.choices(
+                list(range(n_class)), weights=get_expected_label_distribution(args.dataset), k=n_test_sample
+        ) )
+        iid_acts = nn.functional.one_hot(exp_labels)
+        ood_acts = nn.functional.softmax(ood_acts, dim=-1).cpu()
 
-        M = torch.sum( torch.abs( all_labels.unsqueeze(1) - ood_acts.unsqueeze(0) ), dim=-1 )
+        M = torch.sum( torch.abs( iid_acts.unsqueeze(1) - ood_acts.unsqueeze(0) ), dim=-1 )
         weights = torch.as_tensor([])
         Pi = ot.emd(weights, weights, M, numItermax=10**8)
+        
+        label_inds = Pi.nonzero()[:, 0]
+        matched_softmax_inds = Pi.nonzero()[:, 1]
 
         est = 0
         for i in range(n_class):
-            clss_tar_inds = ( torch.argmax(all_labels, dim=1) == i )
-            clss_scores = Pi[ label_inds[clss_tar_inds], matched_softmax_inds[clss_tar_inds] ]
+            clss_tar_inds = ( torch.argmax(iid_acts, dim=1) == i )
+            clss_scores = M[ label_inds[clss_tar_inds], matched_softmax_inds[clss_tar_inds] ]
             clss_est = ( clss_scores > thresholds[i] ).sum()
             est += clss_est
         
-        est = est / n_test_sample
+        est = est.item() / n_test_sample
     
     elif metric == 'ATC':
         if pretrained:
