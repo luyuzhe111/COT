@@ -2,9 +2,13 @@ import torchvision.transforms as transforms
 import torch
 import torchvision.transforms.functional as TF
 import torch.optim as optim
-from model import ResNet18, ResNet50, DenseNet121, VGG11, ViT_B_16, initialize_bert_based_model
+from model import (
+    ResNet18, ResNet50, DenseNet121, VGG11, ViT_B_16, 
+    initialize_bert_based_model, initialize_bert_transform
+)
 from wilds.datasets.fmow_dataset import FMoWDataset
 from wilds.datasets.rxrx1_dataset import RxRx1Dataset
+from wilds.datasets.amazon_dataset import AmazonDataset
 from collections import Counter
 
 
@@ -40,6 +44,8 @@ def get_expected_label_distribution(dataset):
         'tiny-imagenet': [1 / 200] * 200,
         'Living-17': [1 / 17] * 17,
         'Nonliving-26': [1 / 26] * 26,
+        'Entity-13': [1 / 13] * 13,
+        'Entity-30': [1 / 30] * 30,
     }
 
     return config[dataset]
@@ -55,7 +61,8 @@ def get_n_classes(dataset):
         'Entity-13': 13,
         'Entity-30': 30,
         'FMoW': 62,
-        'RxRx1': 1139
+        'RxRx1': 1139,
+        'Amazon': 5
     }
 
     return n_class[dataset]
@@ -121,6 +128,9 @@ def get_transforms(dataset, split, pretrained):
             ]
         transform = transforms.Compose(transforms_ls)
     
+    elif dataset == 'Amazon':
+        transform = initialize_bert_transform('distilbert-base-uncased', max_token_length=512)
+    
     return transform
 
 
@@ -139,6 +149,14 @@ def get_optimizer(dsname, net, lr, pretrained):
     
     elif dsname == 'RxRx1':
         return optim.Adam(net.parameters(), lr=lr, weight_decay=1e-5)
+    
+    elif dsname == 'Amazon':
+        no_decay = ['bias', 'LayerNorm.weight']
+        params = [
+            {'params': [p for n, p in net.named_parameters() if not any(nd in n for nd in no_decay)], 'weight_decay': 1e-2},
+            {'params': [p for n, p in net.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+        ]
+        return optim.AdamW(params, lr=1e-5)
 
 
 def get_lr_scheduler(dsname, opt, pretrained, T_max=-1):
@@ -162,6 +180,9 @@ def get_lr_scheduler(dsname, opt, pretrained, T_max=-1):
             opt, max_lr=1e-4, div_factor=1e12, pct_start=0.11, final_div_factor=1e12,
             cycle_momentum=False, base_momentum=0, max_momentum=0, total_steps=T_max
         )
+    
+    elif dsname == 'Amazon':
+        return optim.lr_scheduler.PolynomialLR(opt, total_iters=3, power=1, verbose=True)
 
 
 def get_models(arch, n_class, model_seed, pretrained):

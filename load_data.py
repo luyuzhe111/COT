@@ -9,6 +9,8 @@ from torch_datasets.tiny_imagenet import TinyImageNet, TinyImageNetCorrupted
 from torch_datasets.cifar20 import CIFAR20, get_coarse_labels
 from wilds.datasets.fmow_dataset import FMoWDataset
 from wilds.datasets.rxrx1_dataset import RxRx1Dataset
+from wilds.datasets.amazon_dataset import AmazonDataset
+from wilds.datasets.civilcomments_dataset import CivilCommentsDataset
 from wilds.datasets.wilds_dataset import WILDSSubset
 
 
@@ -35,6 +37,12 @@ def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True)
     
     elif dsname == 'RxRx1':
         dataset = RxRx1Dataset(download=True, root_dir=f"{iid_path}")
+    
+    elif dsname == 'Amazon':
+        dataset = AmazonDataset(download=True, root_dir=f"{iid_path}")
+    
+    elif dsname == 'CivilComments':
+        dataset = CivilCommentsDataset(download=True, root_dir=f"{iid_path}")
 
     else:
         raise ValueError('unknown dataset')
@@ -45,6 +53,9 @@ def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True)
     elif dsname == 'RxRx1':
         train_set = dataset.get_subset('train', transform=get_transforms(dsname, 'train', pretrained))
         val_set = dataset.get_subset('id_test', transform=get_transforms(dsname, 'val', pretrained))
+    elif dsname == 'Amazon':
+        train_set = dataset.get_subset('train', transform=transform)
+        val_set = dataset.get_subset('id_val', transform=transform)
     else:
         assert n_val_samples > 0, 'no validation set'
         torch.manual_seed(seed)
@@ -80,7 +91,7 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
         dataset = CIFAR100(iid_path, train=False, transform=transform, download=True)
     elif dsname == 'Tiny-ImageNet':
         dataset = TinyImageNet(iid_path, split='test', transform=transform)
-    elif dsname in ['Living-17', 'Nonliving-26']:
+    elif dsname in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
         dataset = get_breeds_dataset(iid_path, dsname, subpopulation, split='test', transform=transform)
     elif dsname == 'FMoW':
         dataset = FMoWDataset(download=False, root_dir=iid_path, use_ood_val=True)
@@ -106,7 +117,7 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
         elif dsname == 'Tiny-ImageNet':
             dataset = TinyImageNetCorrupted(corr_path, corr, corr_sev, transform=transform)
         
-        elif dsname in ['Living-17', 'Nonliving-26']:
+        elif dsname in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
             dataset = get_breeds_dataset(
                 iid_path, dsname, subpopulation, split='test', transform=transform, corr=corr, corr_sev=corr_sev 
             )
