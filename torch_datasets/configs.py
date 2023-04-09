@@ -32,12 +32,20 @@ def get_expected_label_distribution(dataset):
 
     elif dataset == 'RxRx1':
         full_set = RxRx1Dataset(download=True, root_dir='./data')
-        val_set = dataset.get_subset('id_test', transform=get_transforms(dataset, 'val', True))
+        val_set = full_set.get_subset('id_test', transform=None)
         label_counts = Counter(val_set.y_array.tolist())
         total_count = len(val_set.y_array)
         label_dist = [label_counts[i] / total_count for i in range(len(label_counts))]
         return label_dist
     
+    elif dataset == 'Amazon':
+        full_set = AmazonDataset(download=False, root_dir='./data')
+        val_set = full_set.get_subset('id_val', transform=None)
+        label_counts = Counter(val_set.y_array.tolist())
+        total_count = len(val_set.y_array)
+        label_dist = [label_counts[i] / total_count for i in range(len(label_counts))]
+        return label_dist
+        
     config = {
         'CIFAR-10': [1 / 10] * 10,
         'CIFAR-100': [1 / 100] * 100,

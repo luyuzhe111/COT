@@ -95,6 +95,10 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
         dataset = get_breeds_dataset(iid_path, dsname, subpopulation, split='test', transform=transform)
     elif dsname == 'FMoW':
         dataset = FMoWDataset(download=False, root_dir=iid_path, use_ood_val=True)
+    elif dsname == 'RxRx1':
+        dataset = RxRx1Dataset(download=False, root_dir=iid_path)
+    elif dsname == 'Amazon':
+        dataset = AmazonDataset(download=False, root_dir=iid_path)
     else:
         raise ValueError('unknown dataset')
     
@@ -124,6 +128,7 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
         
         elif dsname == 'FMoW':
             full_dataset = FMoWDataset(download=True, root_dir=iid_path, use_ood_val=True)
+            assert corr in ['13-16', '16-18']
             if corr == '13-16':
                 full_testset = full_dataset.get_subset('val', transform=transform)
 
@@ -134,9 +139,25 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
                 dataset = full_testset
             else:
                 groups = full_dataset._eval_groupers['region'].metadata_to_group(full_testset.metadata_array)
-                ind = np.where(groups== (corr_sev - 1) )[0]
+                ind = np.where( groups== (corr_sev - 1) )[0]
                 dataset = WILDSSubset(full_testset, ind, None)
-
+        
+        elif dsname == 'RxRx1':
+            full_dataset = RxRx1Dataset(download=False, root_dir=iid_path)
+            assert corr in ['batch-1', 'batch-2']
+            if corr == 'batch-1':
+                dataset = full_dataset.get_subset('val', transform=transform)
+            elif corr == 'batch-2':
+                dataset = full_dataset.get_subset('test', transform=transform)
+        
+        elif dsname == 'Amazon':
+            full_dataset = AmazonDataset(download=False, root_dir=iid_path)
+            assert corr in ['group-1', 'group-2']
+            if corr == 'group-1':
+                dataset = full_dataset.get_subset('val', transform=transform)
+            elif corr == 'group-2':
+                dataset = full_dataset.get_subset('test', transform=transform)
+            
     # randomly subsample test set to see sample complexity
     # if n_test_sample != -1 and n_test_sample < 10000:
     #     torch.manual_seed(seed)

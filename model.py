@@ -2,6 +2,10 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 from transformers import DistilBertForSequenceClassification, DistilBertModel
+from transformers import BertTokenizerFast, DistilBertTokenizerFast
+
+import os
+os.environ['CURL_CA_BUNDLE'] = ''
 
 
 def ViT_B_16(num_classes=10, seed=123, pretrained=True):
@@ -71,6 +75,45 @@ def initialize_bert_based_model(num_classes):
         num_labels=num_classes
     )
     return model
+
+
+def initialize_bert_transform(net, max_token_length=512):
+    # assert 'bert' in config.model
+    # assert config.max_token_length is not None
+
+    tokenizer = getBertTokenizer(net)
+    def transform(text):
+        tokens = tokenizer(
+            text,
+            padding='max_length',
+            truncation=True,
+            max_length=max_token_length,
+            return_tensors='pt')
+        if net == 'bert-base-uncased':
+            x = torch.stack(
+                (tokens['input_ids'],
+                 tokens['attention_mask'],
+                 tokens['token_type_ids']),
+                dim=2)
+        elif net == 'distilbert-base-uncased':
+            x = torch.stack(
+                (tokens['input_ids'],
+                 tokens['attention_mask']),
+                dim=2)
+        x = torch.squeeze(x, dim=0) # First shape dim is always 1
+        return x
+    return transform
+
+
+def getBertTokenizer(model):
+    if model == 'bert-base-uncased':
+        tokenizer = BertTokenizerFast.from_pretrained(model)
+    elif model == 'distilbert-base-uncased':
+        tokenizer = DistilBertTokenizerFast.from_pretrained(model)
+    else:
+        raise ValueError(f'Model: {model} not recognized.')
+
+    return tokenizer
 
 
 

@@ -3,7 +3,7 @@ from load_data import load_train_dataset, load_test_dataset
 from model import ResNet18, ResNet50, VGG11
 from misc.temperature_scaling import calibrate
 from collections import Counter
-from utils import gather_outputs, compute_t, compute_cott
+from utils import gather_outputs, get_threshold
 from misc.torch_interp import interpolate
 import os
 import json
@@ -13,6 +13,7 @@ import torch
 import torch.nn as nn
 from torch_datasets.configs import get_expected_label_distribution, get_n_classes
 from tqdm import tqdm
+import math
 import ot
 
 
@@ -22,10 +23,11 @@ def main():
     parser = argparse.ArgumentParser(description='Estimate target domain performance.')
     parser.add_argument('--arch', default='resnet18', type=str)
     parser.add_argument('--metric', default='EMD', type=str)
+    parser.add_argument('--cost', default='L1', type=str)
     parser.add_argument('--dataset', default='cifar-10', type=str)
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--n_val_samples', default=10000, type=int)
-    parser.add_argument('--n_test_samples', default=10000, type=int)
+    parser.add_argument('--n_test_samples', default=-1, type=int)
     parser.add_argument('--dataset_seed', default=1, type=int)
     parser.add_argument('--pretrained', action='store_true', default=False)
     parser.add_argument('--model_seed', default=1, type=int)
@@ -71,7 +73,7 @@ def main():
                                    corr_sev=args.severity,
                                    pretrained=pretrained,
                                    n_test_sample=n_test_sample)
-
+    
     val_ood_loader = torch.utils.data.DataLoader(valset_ood, batch_size=args.batch_size, shuffle=True, num_workers=4)
 
     n_test_sample = len(valset_ood)
@@ -140,70 +142,59 @@ def main():
     if metric == 'COT':
         exp_labels = torch.as_tensor(random.choices(
             list(range(n_class)), weights=get_expected_label_distribution(args.dataset), k=n_test_sample
-        ))
+        ), device=device)
         iid_acts = nn.functional.one_hot(exp_labels)
         ood_acts = nn.functional.softmax(ood_acts, dim=-1)
-        M = torch.sum( torch.abs( iid_acts.unsqueeze(1) - ood_acts.unsqueeze(0) ), dim=-1 ) / 2
+        M = torch.sum( torch.abs( iid_acts.unsqueeze(1) - ood_acts.unsqueeze(0) ), dim=-1 )
         weights = torch.as_tensor([])
         est = ( ot.emd2(weights, weights, M, numItermax=10**8) / 2 + conf_gap ).item()
     
     elif metric == 'COTT':
-        if pretrained:
-            cache_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/pretrained_cott_threshold.json"
-        else:
-            cache_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/scratch_cott_threshold.json"
-        
-        if os.path.exists(cache_dir):
-            with open(cache_dir, 'r') as f:
-                data = json.load(f)
-                thresholds = data['t']
-        else:
-            with open(cache_dir, 'w') as f:
-                print('compute confidence threshold...')
-                thresholds = compute_cott(model, val_iid_loader, n_class)
-                json.dump({'t': thresholds.tolist()}, f)
-
-        exp_labels = torch.as_tensor( random.choices(
-                list(range(n_class)), weights=get_expected_label_distribution(args.dataset), k=n_test_sample
-        ) )
-        iid_acts = nn.functional.one_hot(exp_labels)
+        thresholds = get_threshold(model, val_iid_loader, n_class, args)
         ood_acts = nn.functional.softmax(ood_acts, dim=-1).cpu()
-
-        M = torch.sum( torch.abs( iid_acts.unsqueeze(1) - ood_acts.unsqueeze(0) ), dim=-1 )
-        weights = torch.as_tensor([])
-        Pi = ot.emd(weights, weights, M, numItermax=10**8)
+        batch_size = min( n_class * 100, n_test_sample )
+        ood_acts_batches = torch.split(ood_acts, batch_size)
+        print(
+            f'total of {n_test_sample} test samples, splitting into {len(ood_acts_batches)} batches of size {batch_size}'
+        )
         
-        label_inds = Pi.nonzero()[:, 0]
-        matched_softmax_inds = Pi.nonzero()[:, 1]
-
         est = 0
-        for i in range(n_class):
-            clss_tar_inds = ( torch.argmax(iid_acts, dim=1) == i )
-            clss_scores = M[ label_inds[clss_tar_inds], matched_softmax_inds[clss_tar_inds] ]
-            clss_est = ( clss_scores > thresholds[i] ).sum()
-            est += clss_est
+        cost = args.cost
+        for ood_acts_batch in tqdm(ood_acts_batches):
+            exp_labels = torch.as_tensor( random.choices(
+                    list(range(n_class)), 
+                    weights=get_expected_label_distribution(args.dataset), 
+                    k=len(ood_acts_batch)
+            ) )
+            iid_acts = nn.functional.one_hot(exp_labels)
+            
+            if cost == 'L1':
+                M = torch.cdist(iid_acts.float(), ood_acts_batch, p=1)
+            elif cost == 'L2':
+                M = torch.cdist(iid_acts.float(), ood_acts_batch, p=2)
+            
+            weights = torch.as_tensor([])
+            Pi = ot.emd(weights, weights, M, numItermax=10**8)
+            
+            label_inds = Pi.nonzero()[:, 0]
+            matched_softmax_inds = Pi.nonzero()[:, 1]
+
+            batch_est = 0
+            for i in range(n_class):
+                clss_tar_inds = ( torch.argmax(iid_acts, dim=1) == i )
+                clss_scores = M[ label_inds[clss_tar_inds], matched_softmax_inds[clss_tar_inds] ]
+                clss_est = ( clss_scores > thresholds[i] ).sum().item()
+                batch_est += clss_est
+            est = est + batch_est
         
-        est = est.item() / n_test_sample
+        est = est / n_test_sample
+        
+        metric = 'COTT-' + cost
     
     elif metric == 'ATC':
-        if pretrained:
-            cache_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/pretrained_atc_threshold.json"
-        else:
-            cache_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/scratch_atc_threshold.json"
-        
-        if os.path.exists(cache_dir):
-            with open(cache_dir, 'r') as f:
-                data = json.load(f)
-                t = data['t']
-        else:
-            os.makedirs(os.path.dirname(cache_dir), exist_ok=True)
-            with open(cache_dir, 'w') as f:
-                print('compute confidence threshold...')
-                t = compute_t(model, val_iid_loader).item()
-                json.dump({'t': t}, f)
-        
-        softmax = nn.Softmax(dim=1)
-        s_softmax = torch.sum(softmax(ood_acts) * torch.log2(softmax(ood_acts)), dim=1)
+        t = get_threshold(model, val_iid_loader, n_class, args)
+        act_fn = nn.Softmax(dim=1)
+        s_softmax = torch.sum(act_fn(ood_acts) * torch.log2(act_fn(ood_acts)), dim=1)
         est = (s_softmax < t).sum().item() / len(ood_acts)
 
     print('------------------')
@@ -212,11 +203,11 @@ def main():
     print('------------------')
     print()
 
-    n_test_str = n_test_sample if dsname not in ['FMoW'] else -1
+    n_test_str = args.n_test_samples
     if pretrained:
-        result_dir = f"results/{dsname}/pretrained/{args.arch}_{model_seed}-{model_epoch}/{args.metric}_{n_test_str}/{corruption}.json"
+        result_dir = f"results/{dsname}/pretrained/{args.arch}_{model_seed}-{model_epoch}/{metric}_{n_test_str}/{corruption}.json"
     else:
-        result_dir = f"results/{dsname}/scratch/{args.arch}_{model_seed}-{model_epoch}/{args.metric}_{n_test_str}/{corruption}.json"
+        result_dir = f"results/{dsname}/scratch/{args.arch}_{model_seed}-{model_epoch}/{metric}_{n_test_str}/{corruption}.json"
 
     print(result_dir, os.path.dirname(result_dir), os.path.basename(result_dir))
     os.makedirs(os.path.dirname(result_dir), exist_ok=True)
