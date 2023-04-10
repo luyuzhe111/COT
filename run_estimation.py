@@ -99,11 +99,11 @@ def main():
     # use temperature scaling to calibrate model
     print('calibrating models...')
     
-    opt_bias = True
+    opt_bias = False
     if opt_bias:
         temp_dir = f"{cache_dir}/base_model_{args.model_seed}-{model_epoch}_temp_with_bias.json"
     else:
-        temp_dir = f"{cache_dir}/base_model_{args.model_seed}-{model_epoch}_temp_.json"
+        temp_dir = f"{cache_dir}/base_model_{args.model_seed}-{model_epoch}_temp.json"
     model = calibrate(model, n_class, opt_bias, val_iid_loader, temp_dir)
     print('calibration done.')
 
@@ -142,17 +142,17 @@ def main():
     if metric == 'COT':
         exp_labels = torch.as_tensor(random.choices(
             list(range(n_class)), weights=get_expected_label_distribution(args.dataset), k=n_test_sample
-        ), device=device)
+        ))
         iid_acts = nn.functional.one_hot(exp_labels)
-        ood_acts = nn.functional.softmax(ood_acts, dim=-1)
-        M = torch.sum( torch.abs( iid_acts.unsqueeze(1) - ood_acts.unsqueeze(0) ), dim=-1 )
+        ood_acts = nn.functional.softmax(ood_acts, dim=-1).cpu()
+        M = torch.cdist(iid_acts.float(), ood_acts, p=1)
         weights = torch.as_tensor([])
-        est = ( ot.emd2(weights, weights, M, numItermax=10**8) / 2 + conf_gap ).item()
+        est = ( ot.emd2(weights, weights, M, numItermax=1e8, numThreads=8) / 2 + conf_gap ).item()
     
     elif metric == 'COTT':
         thresholds = get_threshold(model, val_iid_loader, n_class, args)
         ood_acts = nn.functional.softmax(ood_acts, dim=-1).cpu()
-        batch_size = min( n_class * 100, n_test_sample )
+        batch_size = n_test_sample # min( n_class * 100, n_test_sample )
         ood_acts_batches = torch.split(ood_acts, batch_size)
         print(
             f'total of {n_test_sample} test samples, splitting into {len(ood_acts_batches)} batches of size {batch_size}'
@@ -174,15 +174,13 @@ def main():
                 M = torch.cdist(iid_acts.float(), ood_acts_batch, p=2)
             
             weights = torch.as_tensor([])
-            Pi = ot.emd(weights, weights, M, numItermax=10**8)
+            Pi = ot.emd(weights, weights, M, numItermax=1e8, numThreads=8)
             
-            label_inds = Pi.nonzero()[:, 0]
-            matched_softmax_inds = Pi.nonzero()[:, 1]
-
+            costs = ( Pi * M.shape[0] * M ).sum(1)
             batch_est = 0
             for i in range(n_class):
                 clss_tar_inds = ( torch.argmax(iid_acts, dim=1) == i )
-                clss_scores = M[ label_inds[clss_tar_inds], matched_softmax_inds[clss_tar_inds] ]
+                clss_scores = costs[ clss_tar_inds ]
                 clss_est = ( clss_scores > thresholds[i] ).sum().item()
                 batch_est += clss_est
             est = est + batch_est

@@ -1,9 +1,11 @@
 import torch
 import torch.nn as nn
 import os
+import json
 import pickle
 from tqdm import tqdm
 import ot
+import time
 
 def evaluation(net, testloader):
     net.eval()
@@ -87,9 +89,58 @@ def compute_t(net, iid_loader):
 
 
 
+def get_threshold(net, iid_loader, n_class, args):
+    dsname = args.dataset
+    arch = args.arch
+    model_seed = args.model_seed
+    model_epoch = args.ckpt_epoch
+    metric = args.metric
+    pretrained = args.pretrained
+    cost = args.cost
+    
+    if metric == 'ATC':
+        if pretrained:
+            cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/pretrained_atc_threshold.json"
+        else:
+            cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/scratch_atc_threshold.json"
+        
+        if os.path.exists(cache_dir):
+            with open(cache_dir, 'r') as f:
+                data = json.load(f)
+                t = data['t']
+        else:
+            os.makedirs(os.path.dirname(cache_dir), exist_ok=True)
+            with open(cache_dir, 'w') as f:
+                print('compute confidence threshold...')
+                t = compute_t(net, iid_loader).item()
+                json.dump({'t': t}, f)
+        
+        return t
+    
+    elif metric == 'COTT':
+        if pretrained:
+            cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/pretrained_cott-{cost}_threshold.json"
+        else:
+            cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/scratch_cott-{cost}_threshold.json"
+        
+        if os.path.exists(cache_dir):
+            with open(cache_dir, 'r') as f:
+                data = json.load(f)
+                thresholds = data['t']
+        else:
+            with open(cache_dir, 'w') as f:
+                print('compute confidence threshold...')
+                thresholds = compute_cott(net, iid_loader, n_class, cost)
+                json.dump({'t': thresholds.tolist()}, f)
+        
+        return thresholds
+    
+    else:
+        raise ValueError(f'unknown metric {metric}')
+        
 
 
-def compute_cott(net, iid_loader, n_class):
+def compute_cott(net, iid_loader, n_class, cost):
     net.eval()
     softmax_vecs = []
     preds, tars = [], []
@@ -108,23 +159,35 @@ def compute_cott(net, iid_loader, n_class):
     preds, tars  = torch.as_tensor(preds), torch.as_tensor(tars)
     softmax_vecs = torch.cat(softmax_vecs, dim=0)
     target_vecs = nn.functional.one_hot(tars)
+    
+    max_n = 50000
+    if len(target_vecs) > max_n:
+        print(f'sampling {max_n} out of {len(target_vecs)} validation samples...')
+        torch.manual_seed(0)
+        rand_inds = torch.randperm(len(target_vecs))
+        tars = tars[rand_inds][:max_n]
+        preds = preds[rand_inds][:max_n]
+        target_vecs = target_vecs[rand_inds][:max_n]
+        softmax_vecs = softmax_vecs[rand_inds][:max_n]
 
     print('computing assignment...')
-    M = torch.sum(
-        torch.abs( target_vecs.unsqueeze(1) - softmax_vecs.unsqueeze(0) ), dim=-1 
-    )
+    if cost == 'L1':
+        M = torch.cdist(target_vecs.float(), softmax_vecs, p=1)
+    elif cost == 'L2':
+        M = torch.cdist(target_vecs.float(), softmax_vecs, p=2)
+    
+    start = time.time()
     weights = torch.as_tensor([])
-    Pi = ot.emd(weights, weights, M, numItermax=10**8)
-    label_inds = Pi.nonzero()[:, 0]
-    matched_softmax_inds = Pi.nonzero()[:, 1]
-    print('done.')
+    Pi = ot.emd(weights, weights, M, numItermax=1e8)
+
+    print(f'done. {time.time() - start}s passed')
+    
+    costs = ( Pi * M.shape[0] * M ).sum(1)
 
     for i in range(n_class):
         clss_tar_inds = ( tars == i )
         n_correct = (preds[clss_tar_inds]).eq(tars[clss_tar_inds]).sum()
-        clss_scores = torch.sort (
-            M[ label_inds[clss_tar_inds], matched_softmax_inds[clss_tar_inds] ]
-        )[0]
+        clss_scores = torch.sort( costs[clss_tar_inds] )[0]
         thresholds[i] = clss_scores[n_correct - 1]
 
     return thresholds
@@ -143,7 +206,7 @@ def gather_outputs(model, dataloader, device, cache_dir):
         print('computing result for', cache_dir)
         with torch.no_grad():
             for items in tqdm(dataloader):
-                inputs, targets = items[0], items[1]                   
+                inputs, targets = items[0], items[1]               
                 inputs, targets = inputs.to(device), targets.to(device)
                 outputs = model(inputs)
 
