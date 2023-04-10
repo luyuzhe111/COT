@@ -177,13 +177,7 @@ def main():
             Pi = ot.emd(weights, weights, M, numItermax=1e8, numThreads=8)
             
             costs = ( Pi * M.shape[0] * M ).sum(1)
-            batch_est = 0
-            for i in range(n_class):
-                clss_tar_inds = ( torch.argmax(iid_acts, dim=1) == i )
-                clss_scores = costs[ clss_tar_inds ]
-                clss_est = ( clss_scores > thresholds[i] ).sum().item()
-                batch_est += clss_est
-            est = est + batch_est
+            est = est + (costs > thresholds).sum().item()
         
         est = est / n_test_sample
         

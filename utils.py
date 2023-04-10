@@ -88,7 +88,6 @@ def compute_t(net, iid_loader):
     return sorted_s_softmax[misclassified - 1] + 1e-9
 
 
-
 def get_threshold(net, iid_loader, n_class, args):
     dsname = args.dataset
     arch = args.arch
@@ -130,15 +129,14 @@ def get_threshold(net, iid_loader, n_class, args):
         else:
             with open(cache_dir, 'w') as f:
                 print('compute confidence threshold...')
-                thresholds = compute_cott(net, iid_loader, n_class, cost)
-                json.dump({'t': thresholds.tolist()}, f)
+                t = compute_cott(net, iid_loader, n_class, cost)
+                json.dump({'t': t}, f)
         
-        return thresholds
+        return t
     
     else:
         raise ValueError(f'unknown metric {metric}')
         
-
 
 def compute_cott(net, iid_loader, n_class, cost):
     net.eval()
@@ -155,7 +153,6 @@ def compute_cott(net, iid_loader, n_class, cost):
             tars.extend( targets.tolist() )
             softmax_vecs.append( nn.functional.softmax(outputs, dim=1).cpu() )
     
-    thresholds = torch.zeros(n_class)
     preds, tars  = torch.as_tensor(preds), torch.as_tensor(tars)
     softmax_vecs = torch.cat(softmax_vecs, dim=0)
     target_vecs = nn.functional.one_hot(tars)
@@ -183,14 +180,12 @@ def compute_cott(net, iid_loader, n_class, cost):
     print(f'done. {time.time() - start}s passed')
     
     costs = ( Pi * M.shape[0] * M ).sum(1)
-
-    for i in range(n_class):
-        clss_tar_inds = ( tars == i )
-        n_correct = (preds[clss_tar_inds]).eq(tars[clss_tar_inds]).sum()
-        clss_scores = torch.sort( costs[clss_tar_inds] )[0]
-        thresholds[i] = clss_scores[n_correct - 1]
-
-    return thresholds
+    
+    n_correct = preds.eq(tars).sum()
+    
+    t = torch.sort( costs )[0][n_correct - 1].item()
+    
+    return t
 
 
 def gather_outputs(model, dataloader, device, cache_dir):
