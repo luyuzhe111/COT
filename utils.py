@@ -125,7 +125,7 @@ def get_threshold(net, iid_loader, n_class, args):
         if os.path.exists(cache_dir):
             with open(cache_dir, 'r') as f:
                 data = json.load(f)
-                thresholds = data['t']
+                t = data['t']
         else:
             with open(cache_dir, 'w') as f:
                 print('compute confidence threshold...')
