@@ -63,6 +63,7 @@ def get_n_classes(dataset):
     n_class = {
         'CIFAR-10': 10,
         'CIFAR-100': 100,
+        'ImageNet': 1000,
         'Tiny-ImageNet': 200,
         'Living-17': 17,
         'Nonliving-26': 26,
@@ -70,7 +71,8 @@ def get_n_classes(dataset):
         'Entity-30': 30,
         'FMoW': 62,
         'RxRx1': 1139,
-        'Amazon': 5
+        'Amazon': 5,
+        'CivilComments':2
     }
 
     return n_class[dataset]
@@ -89,6 +91,14 @@ def get_transforms(dataset, split, pretrained):
                 transforms.Resize(224),
                 transforms.ToTensor(),
             ])
+    
+    elif dataset == 'ImageNet':
+        transform = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+		])
     
     elif dataset in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
         transform = transforms.Compose([
@@ -139,6 +149,9 @@ def get_transforms(dataset, split, pretrained):
     elif dataset == 'Amazon':
         transform = initialize_bert_transform('distilbert-base-uncased', max_token_length=512)
     
+    elif dataset == 'CivilComments':
+        transform = initialize_bert_transform('distilbert-base-uncased', max_token_length=300)
+    
     return transform
 
 
@@ -149,6 +162,9 @@ def get_optimizer(dsname, net, lr, pretrained):
         else:
             return optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
     
+    elif dsname == 'ImageNet':
+        return optim.Adam(net.parameters(), lr=1e-5)
+    
     elif dsname in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
         return optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
 
@@ -158,7 +174,7 @@ def get_optimizer(dsname, net, lr, pretrained):
     elif dsname == 'RxRx1':
         return optim.Adam(net.parameters(), lr=lr, weight_decay=1e-5)
     
-    elif dsname == 'Amazon':
+    elif dsname in ['Amazon', 'CivilComments']:
         no_decay = ['bias', 'LayerNorm.weight']
         params = [
             {'params': [p for n, p in net.named_parameters() if not any(nd in n for nd in no_decay)], 'weight_decay': 1e-2},
@@ -173,6 +189,9 @@ def get_lr_scheduler(dsname, opt, pretrained, T_max=-1):
             return optim.lr_scheduler.CosineAnnealingLR(opt, T_max=T_max)
         else:
             return optim.lr_scheduler.MultiStepLR(opt, milestones=[100, 200], gamma=0.1)
+    
+    elif dsname == 'ImageNet':
+       return optim.lr_scheduler.MultiStepLR(opt, milestones=[100], gamma=1)
     
     elif dsname in ['Living-17', 'Nonliving-26']:
         return optim.lr_scheduler.MultiStepLR(opt, milestones=[150, 300], gamma=0.1)
@@ -191,6 +210,9 @@ def get_lr_scheduler(dsname, opt, pretrained, T_max=-1):
     
     elif dsname == 'Amazon':
         return optim.lr_scheduler.PolynomialLR(opt, total_iters=3, power=1, verbose=True)
+
+    elif dsname == 'CivilComments':
+        return optim.lr_scheduler.PolynomialLR(opt, total_iters=5, power=1, verbose=True)
 
 
 def get_models(arch, n_class, model_seed, pretrained):

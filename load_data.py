@@ -1,5 +1,5 @@
 import torch
-from torchvision.datasets import CIFAR10, CIFAR100
+from torchvision.datasets import CIFAR10, CIFAR100, ImageFolder
 from torch.utils.data import Dataset
 import os
 import numpy as np
@@ -29,6 +29,9 @@ def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True)
     elif dsname == 'Tiny-ImageNet':
         dataset = TinyImageNet(iid_path, split='train', transform=transform)
     
+    elif dsname == 'ImageNet':
+        dataset = ImageFolder(f"{iid_path}/imagenetv1/train/", transform=transform)
+
     elif dsname in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
         dataset = get_breeds_dataset(iid_path, dsname, 'same', split='train', transform=transform)
     
@@ -46,8 +49,11 @@ def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True)
 
     else:
         raise ValueError('unknown dataset')
-
-    if dsname == 'FMoW':
+    
+    if dsname == 'ImageNet':
+        train_set = ImageFolder(f"{iid_path}/imagenetv1/train/", transform=transform)
+        val_set = ImageFolder(f"{iid_path}/imagenetv1/val/", transform=transform)
+    elif dsname == 'FMoW':
         train_set = dataset.get_subset('train', transform=transform)
         val_set = dataset.get_subset('id_val', transform=transform)
     elif dsname == 'RxRx1':
@@ -56,6 +62,9 @@ def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True)
     elif dsname == 'Amazon':
         train_set = dataset.get_subset('train', transform=transform)
         val_set = dataset.get_subset('id_val', transform=transform)
+    elif dsname == 'CivilComments':
+        train_set = dataset.get_subset('train', transform=transform)
+        val_set = dataset.get_subset('val', transform=transform)
     else:
         assert n_val_samples > 0, 'no validation set'
         torch.manual_seed(seed)
