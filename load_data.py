@@ -108,6 +108,8 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
         dataset = RxRx1Dataset(download=False, root_dir=iid_path)
     elif dsname == 'Amazon':
         dataset = AmazonDataset(download=False, root_dir=iid_path)
+    elif dsname == 'CivilComments':
+        dataset = CivilCommentsDataset(download=True, root_dir=iid_path)
     else:
         raise ValueError('unknown dataset')
     
@@ -148,7 +150,7 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
                 dataset = full_testset
             else:
                 groups = full_dataset._eval_groupers['region'].metadata_to_group(full_testset.metadata_array)
-                ind = np.where( groups== (corr_sev - 1) )[0]
+                ind = np.where( groups == (corr_sev - 1) )[0]
                 dataset = WILDSSubset(full_testset, ind, None)
         
         elif dsname == 'RxRx1':
@@ -166,6 +168,19 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
                 dataset = full_dataset.get_subset('val', transform=transform)
             elif corr == 'group-2':
                 dataset = full_dataset.get_subset('test', transform=transform)
+        
+        elif dsname == 'CivilComments':
+            full_dataset = CivilCommentsDataset(download=False, root_dir=iid_path)
+            assert corr_sev in [i for i in range(8)]
+            
+            if corr_sev == 0:
+                dataset = full_dataset.get_subset('test', transform=transform)
+            else:
+                testset = full_dataset.get_subset('test', transform=transform)
+                groups = full_dataset._eval_groupers[corr_sev - 1].metadata_to_group(testset.metadata_array)
+                
+                idx = np.concatenate((np.where(groups==1)[0], np.where(groups==3)[0]))
+                dataset = WILDSSubset(testset, idx, transform=None)
             
     # randomly subsample test set to see sample complexity
     # if n_test_sample != -1 and n_test_sample < 10000:

@@ -9,6 +9,7 @@ from model import (
 from wilds.datasets.fmow_dataset import FMoWDataset
 from wilds.datasets.rxrx1_dataset import RxRx1Dataset
 from wilds.datasets.amazon_dataset import AmazonDataset
+from wilds.datasets.civilcomments_dataset import CivilCommentsDataset
 from collections import Counter
 
 
@@ -41,6 +42,14 @@ def get_expected_label_distribution(dataset):
     elif dataset == 'Amazon':
         full_set = AmazonDataset(download=False, root_dir='./data')
         val_set = full_set.get_subset('id_val', transform=None)
+        label_counts = Counter(val_set.y_array.tolist())
+        total_count = len(val_set.y_array)
+        label_dist = [label_counts[i] / total_count for i in range(len(label_counts))]
+        return label_dist
+    
+    elif dataset == 'CivilComments':
+        full_set = CivilCommentsDataset(download=True, root_dir=f"./data")
+        val_set = full_set.get_subset('val', transform=None)
         label_counts = Counter(val_set.y_array.tolist())
         total_count = len(val_set.y_array)
         label_dist = [label_counts[i] / total_count for i in range(len(label_counts))]

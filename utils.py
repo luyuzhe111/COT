@@ -157,7 +157,7 @@ def compute_cott(net, iid_loader, n_class, cost):
     softmax_vecs = torch.cat(softmax_vecs, dim=0)
     target_vecs = nn.functional.one_hot(tars)
     
-    max_n = 50000
+    max_n = 10000
     if len(target_vecs) > max_n:
         print(f'sampling {max_n} out of {len(target_vecs)} validation samples...')
         torch.manual_seed(0)
