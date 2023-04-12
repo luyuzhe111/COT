@@ -11,26 +11,19 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metric="COT"
+metric="ATC"
 data_path="./data/CIFAR-10"
 dataset="CIFAR-10"
 corruption_path="./data/CIFAR-10-C"
-n_test_samples=10000
+n_test_samples=-1
 n_val_samples=10000
 batch_size=200
 arch=resnet18
-pretrained="True"
+pretrained="False"
 model_seed=1
-ckpt_epoch=15
+ckpt_epoch=300
 
-
-if [[ ${dataset} == "CIFAR-10" ]] || [[ ${dataset} == "CIFAR-100" ]]
-then
-    corruptions="brightness defocus_blur elastic_transform fog frost gaussian_blur gaussian_noise glass_blur impulse_noise jpeg_compression motion_blur pixelate saturate shot_noise snow spatter speckle_noise zoom_blur contrast"
-elif [[ ${dataset} == "Tiny-ImageNet" ]]
-then
-    corruptions="brightness defocus_blur elastic_transform fog frost gaussian_noise glass_blur impulse_noise jpeg_compression motion_blur pixelate shot_noise snow zoom_blur contrast" 
-fi
+corruptions="brightness defocus_blur elastic_transform fog frost gaussian_blur gaussian_noise glass_blur impulse_noise jpeg_compression motion_blur pixelate saturate shot_noise snow spatter speckle_noise zoom_blur contrast"
 
 echo ${corruptions}
 
@@ -38,9 +31,11 @@ if [[ ${pretrained} == 'True' ]]
 then
     echo "pretrained model used"
     python run_estimation.py --pretrained --dataset ${dataset} --corruption clean --severity 0 --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch} --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
+    python run_estimation.py --pretrained --dataset ${dataset} --corruption collection --severity 0 --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch} --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
 else
     echo "scratch model used"
     python run_estimation.py --dataset ${dataset} --corruption clean --severity 0 --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch} --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
+    python run_estimation.py --dataset ${dataset} --corruption collection --severity 0 --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch} --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
 fi
 
 for corruption in ${corruptions}

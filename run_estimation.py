@@ -145,6 +145,16 @@ def main():
         ))
         iid_acts = nn.functional.one_hot(exp_labels)
         ood_acts = nn.functional.softmax(ood_acts, dim=-1).cpu()
+        
+        subsample_size = min( 10000, n_test_sample )
+        print(
+            f'total of {n_test_sample} test samples, subsample {subsample_size} of them.'
+        )
+        torch.manual_seed(0)
+        rand_inds = torch.randperm(len(ood_acts))[:subsample_size]
+        iid_acts = iid_acts[rand_inds]
+        ood_acts = ood_acts[rand_inds]
+        
         M = torch.cdist(iid_acts.float(), ood_acts, p=1)
         weights = torch.as_tensor([])
         est = ( ot.emd2(weights, weights, M, numItermax=1e8, numThreads=8) / 2 + conf_gap ).item()
@@ -152,34 +162,36 @@ def main():
     elif metric == 'COTT':
         thresholds = get_threshold(model, val_iid_loader, n_class, args)
         ood_acts = nn.functional.softmax(ood_acts, dim=-1).cpu()
-        batch_size = n_test_sample # min( n_class * 100, n_test_sample )
-        ood_acts_batches = torch.split(ood_acts, batch_size)
+        subsample_size = min( 10000, n_test_sample )
         print(
-            f'total of {n_test_sample} test samples, splitting into {len(ood_acts_batches)} batches of size {batch_size}'
+            f'total of {n_test_sample} test samples, subsample {subsample_size} of them.'
         )
         
-        est = 0
-        cost = args.cost
-        for ood_acts_batch in tqdm(ood_acts_batches):
-            exp_labels = torch.as_tensor( random.choices(
-                    list(range(n_class)), 
-                    weights=get_expected_label_distribution(args.dataset), 
-                    k=len(ood_acts_batch)
-            ) )
-            iid_acts = nn.functional.one_hot(exp_labels)
-            
-            if cost == 'L1':
-                M = torch.cdist(iid_acts.float(), ood_acts_batch, p=1)
-            elif cost == 'L2':
-                M = torch.cdist(iid_acts.float(), ood_acts_batch, p=2)
-            
-            weights = torch.as_tensor([])
-            Pi = ot.emd(weights, weights, M, numItermax=1e8, numThreads=8)
-            
-            costs = ( Pi * M.shape[0] * M ).sum(1)
-            est = est + (costs > thresholds).sum().item()
+        torch.manual_seed(0)
+        rand_inds = torch.randperm(len(ood_acts))[:subsample_size]
+        ood_acts_batch = ood_acts[rand_inds]
         
-        est = est / n_test_sample
+        cost = args.cost
+
+        exp_labels = torch.as_tensor( random.choices(
+                list(range(n_class)), 
+                weights=get_expected_label_distribution(args.dataset), 
+                k=len(ood_acts_batch)
+        ) )
+        iid_acts = nn.functional.one_hot(exp_labels)
+        
+        if cost == 'L1':
+            M = torch.cdist(iid_acts.float(), ood_acts_batch, p=1)
+        elif cost == 'L2':
+            M = torch.cdist(iid_acts.float(), ood_acts_batch, p=2)
+        
+        weights = torch.as_tensor([])
+        Pi = ot.emd(weights, weights, M, numItermax=1e8)
+        
+        costs = ( Pi * M.shape[0] * M ).sum(1)
+        est = (costs > thresholds).sum().item()
+        
+        est = est / subsample_size
         
         metric = 'COTT-' + cost
     

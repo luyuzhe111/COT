@@ -9,3 +9,11 @@ cd ./CIFAR-10-C/
 wget https://zenodo.org/record/2535967/files/CIFAR-10-C.tar
 
 tar -xvf CIFAR-10-C.tar
+
+cd ..
+mkdir ./CIFAR-10-V2
+
+cd ./CIFAR-10-V2
+wget https://github.com/modestyachts/cifar-10.2/raw/master/cifar102_train.npz
+
+wget https://github.com/modestyachts/cifar-10.2/raw/master/cifar102_test.npz

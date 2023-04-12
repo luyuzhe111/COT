@@ -5,8 +5,10 @@ import os
 import numpy as np
 from torch_datasets.configs import get_transforms
 from torch_datasets.breeds import get_breeds_dataset
+from torch_datasets.imagenet import get_imagenet_dataset
 from torch_datasets.tiny_imagenet import TinyImageNet, TinyImageNetCorrupted
 from torch_datasets.cifar20 import CIFAR20, get_coarse_labels
+from torch_datasets.cifar10 import CIFAR10v2
 from wilds.datasets.fmow_dataset import FMoWDataset
 from wilds.datasets.rxrx1_dataset import RxRx1Dataset
 from wilds.datasets.amazon_dataset import AmazonDataset
@@ -100,6 +102,8 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
         dataset = CIFAR100(iid_path, train=False, transform=transform, download=True)
     elif dsname == 'Tiny-ImageNet':
         dataset = TinyImageNet(iid_path, split='test', transform=transform)
+    elif dsname == 'ImageNet':
+        dataset = ImageFolder(f"{iid_path}/imagenetv1/val/", transform=transform)
     elif dsname in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
         dataset = get_breeds_dataset(iid_path, dsname, subpopulation, split='test', transform=transform)
     elif dsname == 'FMoW':
@@ -115,7 +119,17 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
     
     # test on corrupted data
     if corr != 'clean':
-        if dsname in ['CIFAR-10', 'CIFAR-100']:
+        if dsname == 'CIFAR-10':
+            if corr == 'collection':
+                dataset = CIFAR10v2(root="./data/CIFAR-10-V2", train=True, download=False, transform=transform)
+            else:
+                path_images = os.path.join(corr_path, corr + '.npy')
+                path_labels = os.path.join(corr_path, 'labels.npy')
+                dataset.data = np.load(path_images)[(corr_sev - 1) * 10000:corr_sev * 10000]
+                dataset.targets = list(np.load(path_labels)[(corr_sev - 1) * 10000:corr_sev * 10000])
+                dataset.targets = [int(item) for item in dataset.targets]
+                
+        elif dsname == 'CIFAR-100':
             path_images = os.path.join(corr_path, corr + '.npy')
             path_labels = os.path.join(corr_path, 'labels.npy')
             dataset.data = np.load(path_images)[(corr_sev - 1) * 10000:corr_sev * 10000]
@@ -131,6 +145,9 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
 
         elif dsname == 'Tiny-ImageNet':
             dataset = TinyImageNetCorrupted(corr_path, corr, corr_sev, transform=transform)
+        
+        elif dsname == 'ImageNet':
+            dataset = get_imagenet_dataset(iid_path, subpopulation, transform, corr, corr_sev)
         
         elif dsname in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
             dataset = get_breeds_dataset(

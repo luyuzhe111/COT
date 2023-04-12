@@ -58,6 +58,7 @@ def get_expected_label_distribution(dataset):
     config = {
         'CIFAR-10': [1 / 10] * 10,
         'CIFAR-100': [1 / 100] * 100,
+        'ImageNet': [1 / 1000] * 1000,
         'tiny-imagenet': [1 / 200] * 200,
         'Living-17': [1 / 17] * 17,
         'Nonliving-26': [1 / 26] * 26,
@@ -93,12 +94,13 @@ def get_transforms(dataset, split, pretrained):
             transform = transforms.Compose([
                 transforms.Resize(224),
                 transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
             ])
         else:
             transform = transforms.Compose([
                 transforms.Resize(224),
                 transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
             ])
     
     elif dataset == 'ImageNet':
