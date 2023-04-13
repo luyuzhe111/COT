@@ -140,6 +140,7 @@ def main():
     print()
 
     if metric == 'COT':
+        torch.manual_seed(0)
         exp_labels = torch.as_tensor(random.choices(
             list(range(n_class)), weights=get_expected_label_distribution(args.dataset), k=n_test_sample
         ))
@@ -157,8 +158,44 @@ def main():
         
         M = torch.cdist(iid_acts.float(), ood_acts, p=1)
         weights = torch.as_tensor([])
-        est = ( ot.emd2(weights, weights, M, numItermax=1e8, numThreads=8) / 2 + conf_gap ).item()
+        est = ( ot.emd2(weights, weights, M, numItermax=1e8, numThreads=8) / 2 ).item()
     
+    elif metric == 'COT-Max':
+        if args.pretrained:
+            cache_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/pretrained_cot_base.json"
+        else:
+            cache_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/scratch_cot_base.json"
+        
+        iid_acts = nn.functional.softmax(iid_acts, dim=-1).cpu()
+        ood_acts = nn.functional.softmax(ood_acts, dim=-1).cpu()
+        
+        if not os.path.exists(cache_dir):
+            torch.manual_seed(0)
+            exp_labels = torch.as_tensor(random.choices(
+                list(range(n_class)), weights=get_expected_label_distribution(args.dataset), k=len(iid_acts)
+            ))
+            label_acts = nn.functional.one_hot(exp_labels)
+            
+            M = torch.max( torch.abs( iid_acts.unsqueeze(1) - label_acts.unsqueeze(0) ), dim=-1)[0]
+            weights = torch.as_tensor([])
+            base_est = ( ot.emd2( weights, weights, M, numItermax=1e8, numThreads=8 ) ).item()
+        
+            with open(cache_dir, 'w') as f:
+                json.dump({'base': base_est}, f)
+        else:
+            with open(cache_dir, 'r') as f:
+                base_est = json.load(f)['base']
+        
+        M2 = torch.max( torch.abs( ood_acts.unsqueeze(1) - iid_acts.unsqueeze(0) ), dim=-1)[0]
+        weights = torch.as_tensor([])
+        add_est = ( ot.emd2( weights, weights, M2, numItermax=1e8, numThreads=8 ) ).item()
+        
+        print('base est:', base_est)
+        print('add est:', add_est)
+        print('iid error:', 1 - iid_acc)
+        
+        est = base_est + add_est
+                
     elif metric == 'COTT':
         thresholds = get_threshold(model, val_iid_loader, n_class, args)
         ood_acts = nn.functional.softmax(ood_acts, dim=-1).cpu()
@@ -195,6 +232,25 @@ def main():
         
         metric = 'COTT-' + cost
     
+    elif metric == 'SCOTT':
+        t = get_threshold(model, val_iid_loader, n_class, args)
+        torch.manual_seed(10)
+        slices = torch.randn(8, n_class)
+        slices = torch.stack([slice / torch.sqrt( torch.sum( slice ** 2 ) ) for slice in slices], dim=0)
+        
+        ood_acts = nn.functional.softmax(ood_acts, dim=-1).cpu()
+        exp_labels = torch.as_tensor( random.choices(
+                list(range(n_class)), 
+                weights=get_expected_label_distribution(args.dataset), 
+                k=len(ood_acts)
+        ) )
+        iid_acts = nn.functional.one_hot(exp_labels)
+        
+        iid_act_scores = iid_acts.float() @ slices.T
+        ood_act_scores = ood_acts.float() @ slices.T
+        scores = torch.abs( torch.sort(ood_act_scores, dim=0)[0] - torch.sort(iid_act_scores, dim=0)[0] )
+        est = ( scores > t ).sum().item() / len(ood_acts) / len(slices)
+    
     elif metric == 'ATC':
         t = get_threshold(model, val_iid_loader, n_class, args)
         act_fn = nn.Softmax(dim=1)
@@ -204,6 +260,7 @@ def main():
     print('------------------')
     print('True OOD error:', 1 - ood_acc)
     print(f'{metric} predicted OOD error:', est)
+    print(f'MAE: {abs(1 - ood_acc - est)}')
     print('------------------')
     print()
 

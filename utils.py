@@ -88,6 +88,37 @@ def compute_t(net, iid_loader):
     return sorted_s_softmax[misclassified - 1] + 1e-9
 
 
+def compute_st(net, iid_loader, n_class):
+    net.eval()
+    softmax_vecs = []
+    preds, tars = [], []
+    with torch.no_grad():
+        for _, items in enumerate(tqdm(iid_loader)):
+            inputs, targets = items[0], items[1]
+            inputs, targets = inputs.cuda(), targets.cuda()
+            outputs = net(inputs)
+            _, prediction = outputs.max(1)
+
+            preds.extend( prediction.tolist() )
+            tars.extend( targets.tolist() )
+            softmax_vecs.append( nn.functional.softmax(outputs, dim=1).cpu() )
+    
+    preds, tars  = torch.as_tensor(preds), torch.as_tensor(tars)
+    softmax_vecs = torch.cat(softmax_vecs, dim=0)
+    target_vecs = nn.functional.one_hot(tars)
+    
+    torch.manual_seed(10)
+    slices = torch.randn(8, n_class)
+    slices = torch.stack([slice / torch.sqrt( torch.sum( slice ** 2 ) ) for slice in slices], dim=0)
+    
+    iid_act_scores = softmax_vecs.float() @ slices.T
+    ood_act_scores = target_vecs.float() @ slices.T
+    scores = torch.sort( torch.abs( torch.sort(ood_act_scores, dim=0)[0] - torch.sort(iid_act_scores, dim=0)[0] ), dim=0 )[0]
+    n_correct = preds.eq(tars).sum()
+    t = scores[n_correct - 1]
+    return t
+    
+
 def get_threshold(net, iid_loader, n_class, args):
     dsname = args.dataset
     arch = args.arch
@@ -133,7 +164,11 @@ def get_threshold(net, iid_loader, n_class, args):
                 json.dump({'t': t}, f)
         
         return t
-    
+
+    elif metric == 'SCOTT':
+        t = compute_st(net, iid_loader, n_class)
+        
+        return t
     else:
         raise ValueError(f'unknown metric {metric}')
         
