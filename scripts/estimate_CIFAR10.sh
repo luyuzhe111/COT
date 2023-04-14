@@ -4,13 +4,6 @@
 #SBATCH --export=ALL
 #SBATCH --exclusive
 
-module load cuda/11.1.0
-
-source ~/.bashrc
-conda activate ood
-
-cd /usr/workspace/lu35/Documents/fot
-
 metric="COT"
 data_path="./data/CIFAR-10"
 dataset="CIFAR-10"
@@ -19,9 +12,9 @@ n_test_samples=10000
 n_val_samples=10000
 batch_size=200
 arch=resnet18
-pretrained="True"
+pretrained="False"
 model_seed=1
-ckpt_epoch=15
+ckpt_epoch=300
 
 
 if [[ ${dataset} == "CIFAR-10" ]] || [[ ${dataset} == "CIFAR-100" ]]
