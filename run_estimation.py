@@ -3,7 +3,7 @@ from load_data import load_train_dataset, load_test_dataset
 from model import ResNet18, ResNet50, VGG11
 from misc.temperature_scaling import calibrate
 from collections import Counter
-from utils import gather_outputs, get_threshold
+from utils import gather_outputs, get_threshold, get_im_estimate
 from misc.torch_interp import interpolate
 import os
 import json
@@ -93,7 +93,7 @@ def main():
         save_dir_path = f"./checkpoints/{dsname}/{args.arch}/scratch"
 
     ckpt = torch.load(f"{save_dir_path}/base_model_{args.model_seed}-{model_epoch}.pt", map_location=device)
-    model = ckpt['model']
+    model = ckpt['model'].module
     model.eval()
     
     # use temperature scaling to calibrate model
@@ -256,6 +256,22 @@ def main():
         act_fn = nn.Softmax(dim=1)
         s_softmax = torch.sum(act_fn(ood_acts) * torch.log2(act_fn(ood_acts)), dim=1)
         est = (s_softmax < t).sum().item() / len(ood_acts)
+
+    elif metric == 'AC':
+        max_confidence = torch.max(nn.functional.softmax(ood_acts, dim=-1), dim=-1)[0]
+        est = 1 - torch.mean(max_confidence)
+
+    elif metric == 'DOC':
+        source_prob = nn.functional.softmax(iid_acts, dim=-1)
+        target_prob = nn.functional.softmax(ood_acts, dim=-1)
+        bool = np.array((iid_preds==iid_tars).cpu())
+        source_err = np.mean(bool)
+        est = source_err + torch.mean(target_prob) - torch.mean(source_prob)
+
+    elif metric == 'IM':
+        source_prob = nn.functional.softmax(iid_acts, dim=-1)
+        target_prob = nn.functional.softmax(ood_acts, dim=-1)
+        est = get_im_estimate(source_prob, target_prob, (iid_preds == iid_tars))
 
     print('------------------')
     print('True OOD error:', 1 - ood_acc)
