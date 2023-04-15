@@ -1,14 +1,4 @@
-<<<<<<< HEAD
 metric="IM"
-=======
-#!/bin/sh
-#SBATCH -N 1
-#SBATCH -t 3:00:00
-#SBATCH --export=ALL
-#SBATCH --exclusive
-
-metric="COT"
->>>>>>> 7145ba0243bb0083e78e45c8d6060fe9f76024b8
 data_path="./data/CIFAR-10"
 dataset="CIFAR-10"
 corruption_path="./data/CIFAR-10-C"

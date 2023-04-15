@@ -1,15 +1,7 @@
-<<<<<<< HEAD
-# mkdir ./data/CIFAR-10/
-# cd ./data/CIFAR-10/
-# wget https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz
-# tar -xvf cifar-10-python.tar.gz
-=======
-mkdir ./data
 mkdir ./data/CIFAR-10/
 cd ./data/CIFAR-10/
 wget https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz
 tar -xvf cifar-10-python.tar.gz
->>>>>>> 7145ba0243bb0083e78e45c8d6060fe9f76024b8
 
 cd data
 mkdir ./CIFAR-10-C/
