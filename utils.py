@@ -6,6 +6,7 @@ import pickle
 from tqdm import tqdm
 import ot
 import time
+import numpy as np
 
 def evaluation(net, testloader):
     net.eval()
@@ -254,3 +255,52 @@ def gather_outputs(model, dataloader, device, cache_dir):
         pickle.dump( data, open( cache_dir, "wb" ) )
 
     return act, pred, tar
+
+
+class HistogramDensity: 
+    def _histedges_equalN(self, x, nbin):
+        npt = len(x)
+        return np.interp(np.linspace(0, npt, nbin + 1),
+                     np.arange(npt),
+                     np.sort(x))
+    
+    def __init__(self, num_bins = 10, equal_mass=False):
+        self.num_bins = num_bins 
+        self.equal_mass = equal_mass
+        
+        
+    def fit(self, vals): 
+        
+        if self.equal_mass:
+            self.bins = self._histedges_equalN(vals, self.num_bins)
+        else: 
+            self.bins = np.linspace(0,1.0,self.num_bins+1)
+    
+        self.bins[0] = 0.0 
+        self.bins[self.num_bins] = 1.0
+        
+        self.hist, bin_edges = np.histogram(vals, bins=self.bins, density=True)
+    
+    def density(self, x): 
+        curr_bins = np.digitize(x, self.bins, right=True)
+        
+        curr_bins -= 1
+        return self.hist[curr_bins]
+
+
+def get_im_estimate(probs_source, probs_target, corr_source): 
+    probs_source = probs_source.numpy()
+    probs_target = probs_target.numpy()
+    corr_source = corr_source.numpy()
+
+    source_binning = HistogramDensity()
+    
+    source_binning.fit(probs_source)
+    
+    target_binning = HistogramDensity()
+    target_binning.fit(probs_target)
+    
+    weights = target_binning.density(probs_source) / source_binning.density(probs_source)
+    weights = weights/ np.mean(weights)
+    
+    return 1 - np.mean(weights * corr_source)

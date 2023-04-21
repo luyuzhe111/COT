@@ -3,7 +3,7 @@ from load_data import load_train_dataset, load_test_dataset
 from model import ResNet18, ResNet50, VGG11
 from misc.temperature_scaling import calibrate
 from collections import Counter
-from utils import gather_outputs, get_threshold
+from utils import gather_outputs, get_threshold,  get_im_estimate
 from misc.torch_interp import interpolate
 import os
 import json
@@ -104,12 +104,16 @@ def main():
         temp_dir = f"{cache_dir}/base_model_{args.model_seed}-{model_epoch}_temp_with_bias.json"
     else:
         temp_dir = f"{cache_dir}/base_model_{args.model_seed}-{model_epoch}_temp.json"
+    
     model = calibrate(model, n_class, opt_bias, val_iid_loader, temp_dir)
     print('calibration done.')
 
     iid_acts, iid_preds, iid_tars = gather_outputs(model, val_iid_loader, device, cache_id_dir)
     ood_acts, ood_preds, ood_tars = gather_outputs(model, val_ood_loader, device, cache_od_dir)
-
+    
+    iid_acts = iid_acts.cpu()
+    ood_acts = ood_acts.cpu()
+    
     iid_acc = ( (iid_preds == iid_tars).sum() / len(iid_tars) ).item()
     ood_acc = ( (ood_preds == ood_tars).sum() / len(ood_tars) ).item()
 
@@ -138,8 +142,29 @@ def main():
     print("ood pseudo-real label tv:", sum(abs(np.array(ood_preds_dist) - np.array(ood_tars_dist))) / 2 )
     print('------------------')
     print()
+    
+    if metric == 'AC':
+        max_confidence = torch.max(nn.functional.softmax(ood_acts, dim=-1), dim=-1)[0]
+        est = 1 - torch.mean(max_confidence).item()
+    
+    elif metric == 'DoC':
+        source_prob = nn.functional.softmax(iid_acts, dim=-1).max(1)[0]
+        target_prob = nn.functional.softmax(ood_acts, dim=-1).max(1)[0]
+        source_err = (iid_preds != iid_tars).sum().item() / len(iid_tars)
+        est = source_err +  torch.mean(source_prob).item() - torch.mean(target_prob).item()
+    
+    elif metric == 'IM':
+        source_prob = nn.functional.softmax(iid_acts, dim=-1).max(1)[0]
+        target_prob = nn.functional.softmax(ood_acts, dim=-1).max(1)[0]
+        est = get_im_estimate(source_prob, target_prob, (iid_preds == iid_tars).cpu()).item()
+    
+    elif metric == 'ATC':
+        t = get_threshold(model, val_iid_loader, n_class, args)
+        act_fn = nn.Softmax(dim=1)
+        s_softmax = torch.sum(act_fn(ood_acts) * torch.log2(act_fn(ood_acts)), dim=1)
+        est = (s_softmax < t).sum().item() / len(ood_acts)
 
-    if metric == 'COT':
+    elif metric == 'COT':
         torch.manual_seed(0)
         exp_labels = torch.as_tensor(random.choices(
             list(range(n_class)), weights=get_expected_label_distribution(args.dataset), k=n_test_sample
@@ -250,12 +275,6 @@ def main():
         ood_act_scores = ood_acts.float() @ slices.T
         scores = torch.abs( torch.sort(ood_act_scores, dim=0)[0] - torch.sort(iid_act_scores, dim=0)[0] )
         est = ( scores > t ).sum().item() / len(ood_acts) / len(slices)
-    
-    elif metric == 'ATC':
-        t = get_threshold(model, val_iid_loader, n_class, args)
-        act_fn = nn.Softmax(dim=1)
-        s_softmax = torch.sum(act_fn(ood_acts) * torch.log2(act_fn(ood_acts)), dim=1)
-        est = (s_softmax < t).sum().item() / len(ood_acts)
 
     print('------------------')
     print('True OOD error:', 1 - ood_acc)
