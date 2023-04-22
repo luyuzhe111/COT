@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH -N 1
-#SBATCH -t 1:00:00
+#SBATCH -t 5:00:00
 #SBATCH --export=ALL
 #SBATCH --exclusive
 
@@ -12,7 +12,7 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metric="COT"
+metrics="AC DoC IM COT COTT"
 data_path="./data/" 
 dataset="CivilComments"
 n_test_samples=-1
@@ -23,7 +23,10 @@ model_seed=1
 ckpt_epoch=5
 corruption='identity'
 
-for level in {0..7}
-    do
-    python run_estimation.py --pretrained --corruption ${corruption} --severity ${level} --arch ${arch} --metric ${metric} --dataset ${dataset} --subpopulation natural  --batch_size ${batch_size} --n_val_samples ${n_val_samples} --n_test_samples ${n_test_samples} --data_path ${data_path} --ckpt_epoch ${ckpt_epoch}
+for metric in ${metrics}
+    do 
+        for level in {0..7}
+            do
+            python run_estimation.py --pretrained --corruption ${corruption} --severity ${level} --arch ${arch} --metric ${metric} --dataset ${dataset} --subpopulation natural  --batch_size ${batch_size} --n_val_samples ${n_val_samples} --n_test_samples ${n_test_samples} --data_path ${data_path} --ckpt_epoch ${ckpt_epoch}
+            done
     done

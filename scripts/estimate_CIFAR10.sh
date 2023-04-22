@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH -N 1
-#SBATCH -t 3:00:00
+#SBATCH -t 6:00:00
 #SBATCH --export=ALL
 #SBATCH --exclusive
 
@@ -11,7 +11,7 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metric="ATC"
+metrics="AC DoC IM ATC COT COTT"
 data_path="./data/CIFAR-10"
 dataset="CIFAR-10"
 corruption_path="./data/CIFAR-10-C"
@@ -27,27 +27,30 @@ corruptions="brightness defocus_blur elastic_transform fog frost gaussian_blur g
 
 echo ${corruptions}
 
-if [[ ${pretrained} == 'True' ]]
-then
-    echo "pretrained model used"
-    python run_estimation.py --pretrained --dataset ${dataset} --corruption clean --severity 0 --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch} --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
-    python run_estimation.py --pretrained --dataset ${dataset} --corruption collection --severity 0 --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch} --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
-else
-    echo "scratch model used"
-    python run_estimation.py --dataset ${dataset} --corruption clean --severity 0 --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch} --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
-    python run_estimation.py --dataset ${dataset} --corruption collection --severity 0 --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch} --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
-fi
-
-for corruption in ${corruptions}
+for metric in ${metrics}
     do
-        for level in {1..5}
-            do
-                echo ${corruption} ${level}
-                if [[ ${pretrained} == 'True' ]]
-                then
-                    python run_estimation.py --pretrained --dataset ${dataset} --corruption ${corruption} --severity ${level} --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch}  --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
-                else
-                    python run_estimation.py --dataset ${dataset} --corruption ${corruption} --severity ${level} --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch}  --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
-                fi
-            done
+    if [[ ${pretrained} == 'True' ]]
+    then
+        echo "pretrained model used"
+        python run_estimation.py --pretrained --dataset ${dataset} --corruption clean --severity 0 --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch} --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
+        python run_estimation.py --pretrained --dataset ${dataset} --corruption collection --subpopulation natural --severity 0 --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch} --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
+    else
+        echo "scratch model used"
+        python run_estimation.py --dataset ${dataset} --corruption clean --severity 0 --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch} --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
+        python run_estimation.py --dataset ${dataset} --corruption collection --subpopulation natural --severity 0 --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch} --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
+    fi
+
+    for corruption in ${corruptions}
+        do
+            for level in {1..5}
+                do
+                    echo ${corruption} ${level}
+                    if [[ ${pretrained} == 'True' ]]
+                    then
+                        python run_estimation.py --pretrained --dataset ${dataset} --corruption ${corruption} --severity ${level} --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch}  --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
+                    else
+                        python run_estimation.py --dataset ${dataset} --corruption ${corruption} --severity ${level} --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch}  --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
+                    fi
+                done
+        done
     done

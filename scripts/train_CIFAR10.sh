@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH -N 1
-#SBATCH -t 20:00:00
+#SBATCH -t 8:00:00
 #SBATCH --export=ALL
 #SBATCH --exclusive
 

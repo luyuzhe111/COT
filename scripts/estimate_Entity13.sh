@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH -N 1
-#SBATCH -t 9:00:00
+#SBATCH -t 6:00:00
 #SBATCH --export=ALL
 #SBATCH --exclusive
 
@@ -14,20 +14,20 @@ cd /usr/workspace/lu35/Documents/fot
 
 metrics="AC DoC IM COT COTT"
 data_path="./data/ImageNet"
-dataset="Nonliving-26"
+dataset="Entity-13"
 n_test_samples=-1
 n_val_samples=10000
 batch_size=128
 arch=resnet50
 model_seed=1
-ckpt_epoch=450
+ckpt_epoch=300
 pretrained="False"
 corr_path="./data/ImageNet/imagenet-c"
 
 for metric in ${metrics}
     do 
-        python run_estimation.py --arch ${arch} --metric ${metric} --dataset ${dataset} --subpopulation same  --batch_size ${batch_size} --n_val_samples ${n_val_samples} --n_test_samples ${n_test_samples} --data_path ${data_path} --ckpt_epoch ${ckpt_epoch}
         python run_estimation.py --arch ${arch} --metric ${metric} --dataset ${dataset} --subpopulation novel --batch_size ${batch_size} --n_val_samples ${n_val_samples} --n_test_samples ${n_test_samples} --data_path ${data_path} --ckpt_epoch ${ckpt_epoch}
+        python run_estimation.py --arch ${arch} --metric ${metric} --dataset ${dataset} --subpopulation same  --batch_size ${batch_size} --n_val_samples ${n_val_samples} --n_test_samples ${n_test_samples} --data_path ${data_path} --ckpt_epoch ${ckpt_epoch}
 
         corruptions="brightness defocus_blur elastic_transform fog frost gaussian_blur gaussian_noise glass_blur impulse_noise jpeg_compression motion_blur pixelate saturate shot_noise snow spatter speckle_noise zoom_blur contrast"
         for corruption in ${corruptions}
@@ -45,4 +45,5 @@ for metric in ${metrics}
                         fi
                     done
             done
+    
     done

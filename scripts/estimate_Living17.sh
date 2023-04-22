@@ -1,3 +1,8 @@
+#!/bin/sh
+#SBATCH -N 1
+#SBATCH -t 8:00:00
+#SBATCH --export=ALL
+#SBATCH --exclusive
 
 
 module load cuda/11.1.0
@@ -7,7 +12,8 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metric="COT"
+metrics="AC DoC IM COT COTT"
+cost='L1'
 data_path="./data/ImageNet"
 dataset="Living-17"
 n_test_samples=-1
@@ -19,22 +25,26 @@ ckpt_epoch=450
 pretrained="False"
 corr_path="./data/ImageNet/imagenet-c"
 
-python run_estimation.py --arch ${arch} --metric ${metric} --dataset ${dataset} --subpopulation same  --batch_size ${batch_size} --n_val_samples ${n_val_samples} --n_test_samples ${n_test_samples} --data_path ${data_path} --ckpt_epoch ${ckpt_epoch}
-python run_estimation.py --arch ${arch} --metric ${metric} --dataset ${dataset} --subpopulation novel --batch_size ${batch_size} --n_val_samples ${n_val_samples} --n_test_samples ${n_test_samples} --data_path ${data_path} --ckpt_epoch ${ckpt_epoch}
-
-corruptions="brightness defocus_blur elastic_transform fog frost gaussian_blur gaussian_noise glass_blur impulse_noise jpeg_compression motion_blur pixelate saturate shot_noise snow spatter speckle_noise zoom_blur contrast"
-for corruption in ${corruptions}
+for metric in ${metrics}
     do
-        for level in {1..5}
+        python run_estimation.py --arch ${arch} --metric ${metric} --cost ${cost} --dataset ${dataset} --subpopulation same  --batch_size ${batch_size} --n_val_samples ${n_val_samples} --n_test_samples ${n_test_samples} --data_path ${data_path} --ckpt_epoch ${ckpt_epoch}
+        python run_estimation.py --arch ${arch} --metric ${metric} --cost ${cost} --dataset ${dataset} --subpopulation novel --batch_size ${batch_size} --n_val_samples ${n_val_samples} --n_test_samples ${n_test_samples} --data_path ${data_path} --ckpt_epoch ${ckpt_epoch}
+
+
+        corruptions="brightness defocus_blur elastic_transform fog frost gaussian_blur gaussian_noise glass_blur impulse_noise jpeg_compression motion_blur pixelate saturate shot_noise snow spatter speckle_noise zoom_blur contrast"
+        for corruption in ${corruptions}
             do
-                echo ${corruption} ${level}
-                if [[ ${pretrained} == 'True' ]]
-                then
-                    python run_estimation.py --pretrained --dataset ${dataset} --subpopulation same  --corruption ${corruption} --severity ${level} --corruption_path ${corr_path} --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch}  --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path}
-                    python run_estimation.py --pretrained --dataset ${dataset} --subpopulation novel --corruption ${corruption} --severity ${level} --corruption_path ${corr_path} --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch}  --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path}
-                else
-                    python run_estimation.py --dataset ${dataset} --subpopulation same  --corruption ${corruption} --severity ${level} --corruption_path ${corr_path} --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch}  --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path}
-                    python run_estimation.py --dataset ${dataset} --subpopulation novel --corruption ${corruption} --severity ${level} --corruption_path ${corr_path} --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch}  --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path}
-                fi
+                for level in {1..5}
+                    do
+                        echo ${corruption} ${level}
+                        if [[ ${pretrained} == 'True' ]]
+                        then
+                            python run_estimation.py --pretrained --cost ${cost} --dataset ${dataset} --subpopulation same  --corruption ${corruption} --severity ${level} --corruption_path ${corr_path} --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch}  --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path}
+                            python run_estimation.py --pretrained --cost ${cost} --dataset ${dataset} --subpopulation novel --corruption ${corruption} --severity ${level} --corruption_path ${corr_path} --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch}  --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path}
+                        else
+                            python run_estimation.py --cost ${cost} --dataset ${dataset} --subpopulation same  --corruption ${corruption} --severity ${level} --corruption_path ${corr_path} --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch}  --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path}
+                            python run_estimation.py --cost ${cost} --dataset ${dataset} --subpopulation novel --corruption ${corruption} --severity ${level} --corruption_path ${corr_path} --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch}  --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path}
+                        fi
+                    done
             done
     done

@@ -11,6 +11,7 @@ from wilds.datasets.rxrx1_dataset import RxRx1Dataset
 from wilds.datasets.amazon_dataset import AmazonDataset
 from wilds.datasets.civilcomments_dataset import CivilCommentsDataset
 from collections import Counter
+import random
 
 
 def get_train_val_size(dataset):
@@ -67,6 +68,23 @@ def get_expected_label_distribution(dataset):
     }
 
     return config[dataset]
+
+
+def sample_label_dist(ds, n_class, sample_size):
+    dist = get_expected_label_distribution(ds)
+    labels = sum([[i] * int(dist[i] * sample_size) for i in range(n_class)], [])
+    
+    remainder = sample_size - len(labels)
+    
+    r_labels = random.choices(
+        list(range(n_class)), 
+        weights=get_expected_label_distribution(ds), 
+        k=remainder
+    )
+    
+    labels = labels + r_labels
+    
+    return torch.as_tensor(labels)
 
 
 def get_n_classes(dataset):

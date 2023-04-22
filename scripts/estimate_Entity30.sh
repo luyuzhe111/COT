@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH -N 1
-#SBATCH -t 9:00:00
+#SBATCH -t 8:00:00
 #SBATCH --export=ALL
 #SBATCH --exclusive
 
@@ -14,13 +14,13 @@ cd /usr/workspace/lu35/Documents/fot
 
 metrics="AC DoC IM COT COTT"
 data_path="./data/ImageNet"
-dataset="Nonliving-26"
+dataset="Entity-30"
 n_test_samples=-1
 n_val_samples=10000
 batch_size=128
 arch=resnet50
 model_seed=1
-ckpt_epoch=450
+ckpt_epoch=300
 pretrained="False"
 corr_path="./data/ImageNet/imagenet-c"
 

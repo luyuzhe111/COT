@@ -7,6 +7,7 @@ from tqdm import tqdm
 import ot
 import time
 import numpy as np
+from torch_datasets.configs import get_expected_label_distribution
 
 def evaluation(net, testloader):
     net.eval()
@@ -68,7 +69,7 @@ def baseline_evaluation(net, testloader, val_loader, t, t_vec, net2):
             metrics[3] += predicted.eq(predicted2).sum().item()
 
     return metrics / total, test_loss / total, 100 * correct / total
-
+    
 
 def compute_t(net, iid_loader):
     net.eval()
