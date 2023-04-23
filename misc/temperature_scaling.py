@@ -71,8 +71,7 @@ class ModelWithTemperature(nn.Module):
         else:
             params = [self.temperature]
         
-        optimizer = optim.LBFGS(params, lr=0.01, max_iter=1e7)
-       
+        optimizer = optim.LBFGS(params, lr=0.01, max_iter=5000)
 
         def eval():
             optimizer.zero_grad()
