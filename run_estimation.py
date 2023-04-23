@@ -1,9 +1,9 @@
 import argparse
-from load_data import load_train_dataset, load_test_dataset
+from load_data import load_val_dataset, load_test_dataset
 from model import ResNet18, ResNet50, VGG11
 from misc.temperature_scaling import calibrate
 from collections import Counter
-from utils import gather_outputs, get_threshold,  get_im_estimate
+from utils import gather_outputs, get_threshold, get_im_estimate
 from misc.torch_interp import interpolate
 import os
 import json
@@ -11,8 +11,9 @@ import random
 import numpy as np
 import torch
 import torch.nn as nn
-from torch_datasets.configs import get_expected_label_distribution, get_n_classes
+from torch_datasets.configs import get_n_classes, get_expected_label_distribution, sample_label_dist
 from tqdm import tqdm
+import time
 import math
 import ot
 
@@ -56,11 +57,11 @@ def main():
     n_class = get_n_classes(args.dataset)
 
     # load in iid data for calibration
-    _, val_set = load_train_dataset(dsname=dsname,
-                                    iid_path=args.data_path,
-                                    pretrained=pretrained,
-                                    n_val_samples=args.n_val_samples,
-                                    seed=args.dataset_seed)
+    val_set = load_val_dataset(dsname=dsname,
+                               iid_path=args.data_path,
+                               pretrained=pretrained,
+                               n_val_samples=args.n_val_samples,
+                               seed=args.dataset_seed)
 
     val_iid_loader = torch.utils.data.DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
@@ -111,13 +112,14 @@ def main():
     iid_acts, iid_preds, iid_tars = gather_outputs(model, val_iid_loader, device, cache_id_dir)
     ood_acts, ood_preds, ood_tars = gather_outputs(model, val_ood_loader, device, cache_od_dir)
     
-    iid_acts = iid_acts.cpu()
-    ood_acts = ood_acts.cpu()
+    act_fn = nn.Softmax(dim=1)
+    iid_acts = act_fn(iid_acts).cpu()
+    ood_acts = act_fn(ood_acts).cpu()
     
     iid_acc = ( (iid_preds == iid_tars).sum() / len(iid_tars) ).item()
     ood_acc = ( (ood_preds == ood_tars).sum() / len(ood_tars) ).item()
 
-    conf = torch.nn.functional.softmax(iid_acts, dim=1).amax(1).mean().item()
+    conf = iid_acts.amax(1).mean().item()
     conf_gap =  conf - iid_acc
 
     print('n ood test sample:', n_test_sample)
@@ -143,34 +145,32 @@ def main():
     print('------------------')
     print()
     
+    start = time.time()
+    
     if metric == 'AC':
-        max_confidence = torch.max(nn.functional.softmax(ood_acts, dim=-1), dim=-1)[0]
+        max_confidence = torch.max(ood_acts, dim=-1)[0]
         est = 1 - torch.mean(max_confidence).item()
     
     elif metric == 'DoC':
-        source_prob = nn.functional.softmax(iid_acts, dim=-1).max(1)[0]
-        target_prob = nn.functional.softmax(ood_acts, dim=-1).max(1)[0]
+        source_prob = iid_acts.max(1)[0]
+        target_prob = ood_acts.max(1)[0]
         source_err = (iid_preds != iid_tars).sum().item() / len(iid_tars)
         est = source_err +  torch.mean(source_prob).item() - torch.mean(target_prob).item()
     
     elif metric == 'IM':
-        source_prob = nn.functional.softmax(iid_acts, dim=-1).max(1)[0]
-        target_prob = nn.functional.softmax(ood_acts, dim=-1).max(1)[0]
+        source_prob = iid_acts.max(1)[0]
+        target_prob = ood_acts.max(1)[0]
         est = get_im_estimate(source_prob, target_prob, (iid_preds == iid_tars).cpu()).item()
     
     elif metric == 'ATC':
         t = get_threshold(model, val_iid_loader, n_class, args)
-        act_fn = nn.Softmax(dim=1)
-        s_softmax = torch.sum(act_fn(ood_acts) * torch.log2(act_fn(ood_acts)), dim=1)
+        s_softmax = torch.sum(ood_acts * torch.log2(ood_acts), dim=1)
         est = (s_softmax < t).sum().item() / len(ood_acts)
 
     elif metric == 'COT':
         torch.manual_seed(0)
-        exp_labels = torch.as_tensor(random.choices(
-            list(range(n_class)), weights=get_expected_label_distribution(args.dataset), k=n_test_sample
-        ))
+        exp_labels = sample_label_dist(dsname, n_class, len(ood_acts))
         iid_acts = nn.functional.one_hot(exp_labels)
-        ood_acts = nn.functional.softmax(ood_acts, dim=-1).cpu()
         
         subsample_size = min( 10000, n_test_sample )
         print(
@@ -191,14 +191,9 @@ def main():
         else:
             cache_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/scratch_cot_base.json"
         
-        iid_acts = nn.functional.softmax(iid_acts, dim=-1).cpu()
-        ood_acts = nn.functional.softmax(ood_acts, dim=-1).cpu()
-        
         if not os.path.exists(cache_dir):
             torch.manual_seed(0)
-            exp_labels = torch.as_tensor(random.choices(
-                list(range(n_class)), weights=get_expected_label_distribution(args.dataset), k=len(iid_acts)
-            ))
+            exp_labels = sample_label_dist(dsname, n_class, len(ood_acts))
             label_acts = nn.functional.one_hot(exp_labels)
             
             M = torch.max( torch.abs( iid_acts.unsqueeze(1) - label_acts.unsqueeze(0) ), dim=-1)[0]
@@ -223,7 +218,6 @@ def main():
                 
     elif metric == 'COTT':
         thresholds = get_threshold(model, val_iid_loader, n_class, args)
-        ood_acts = nn.functional.softmax(ood_acts, dim=-1).cpu()
         subsample_size = min( 10000, n_test_sample )
         print(
             f'total of {n_test_sample} test samples, subsample {subsample_size} of them.'
@@ -235,11 +229,7 @@ def main():
         
         cost = args.cost
 
-        exp_labels = torch.as_tensor( random.choices(
-                list(range(n_class)), 
-                weights=get_expected_label_distribution(args.dataset), 
-                k=len(ood_acts_batch)
-        ) )
+        exp_labels = sample_label_dist(dsname, n_class, subsample_size)
         iid_acts = nn.functional.one_hot(exp_labels)
         
         if cost == 'L1':
@@ -263,12 +253,7 @@ def main():
         slices = torch.randn(8, n_class)
         slices = torch.stack([slice / torch.sqrt( torch.sum( slice ** 2 ) ) for slice in slices], dim=0)
         
-        ood_acts = nn.functional.softmax(ood_acts, dim=-1).cpu()
-        exp_labels = torch.as_tensor( random.choices(
-                list(range(n_class)), 
-                weights=get_expected_label_distribution(args.dataset), 
-                k=len(ood_acts)
-        ) )
+        exp_labels = sample_label_dist(dsname, n_class, len(ood_acts))
         iid_acts = nn.functional.one_hot(exp_labels)
         
         iid_act_scores = iid_acts.float() @ slices.T
@@ -280,6 +265,7 @@ def main():
     print('True OOD error:', 1 - ood_acc)
     print(f'{metric} predicted OOD error:', est)
     print(f'MAE: {abs(1 - ood_acc - est)}')
+    print(f'Time: {time.time() - start}')
     print('------------------')
     print()
 

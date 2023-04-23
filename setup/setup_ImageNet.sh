@@ -15,8 +15,10 @@ find . -name "*.tar" | while read NAME ; do mkdir -p "${NAME%.tar}"; tar -xvf "$
 
 cd ../val
 wget -qO- https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh | bash
+cd ..
+mv val test
 
-cd ../../
+cd ../
 mkdir imagenet-c
 wget https://zenodo.org/record/2235448/files/blur.tar
 tar -xvf "blur.tar" -C  ./imagenet-c/

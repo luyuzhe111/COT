@@ -3,7 +3,7 @@ import torch
 import torchvision.transforms.functional as TF
 import torch.optim as optim
 from model import (
-    ResNet18, ResNet50, DenseNet121, VGG11, ViT_B_16, 
+    ResNet18, ResNet50, DenseNet121, VGG11, ViT_B_16, EfficientNetB4,
     initialize_bert_based_model, initialize_bert_transform
 )
 from wilds.datasets.fmow_dataset import FMoWDataset
@@ -13,15 +13,6 @@ from wilds.datasets.civilcomments_dataset import CivilCommentsDataset
 from collections import Counter
 import random
 
-
-def get_train_val_size(dataset):
-    config = {
-        'CIFAR-10': [50000, 10000],
-        'CIFAR-100': [50000, 10000],
-        'tiny-imagenet': [90000, 10000]
-    }
-
-    return config[dataset]
 
 def get_expected_label_distribution(dataset):
     if dataset == 'FMoW':
@@ -60,7 +51,6 @@ def get_expected_label_distribution(dataset):
         'CIFAR-10': [1 / 10] * 10,
         'CIFAR-100': [1 / 100] * 100,
         'ImageNet': [1 / 1000] * 1000,
-        'tiny-imagenet': [1 / 200] * 200,
         'Living-17': [1 / 17] * 17,
         'Nonliving-26': [1 / 26] * 26,
         'Entity-13': [1 / 13] * 13,
@@ -192,7 +182,7 @@ def get_optimizer(dsname, net, lr, pretrained):
             return optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
     
     elif dsname == 'ImageNet':
-        return optim.Adam(net.parameters(), lr=1e-5)
+        return optim.Adam(net.parameters(), lr=lr)
     
     elif dsname in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
         return optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
@@ -209,7 +199,7 @@ def get_optimizer(dsname, net, lr, pretrained):
             {'params': [p for n, p in net.named_parameters() if not any(nd in n for nd in no_decay)], 'weight_decay': 1e-2},
             {'params': [p for n, p in net.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
         ]
-        return optim.AdamW(params, lr=1e-5)
+        return optim.AdamW(params, lr=lr)
 
 
 def get_lr_scheduler(dsname, opt, pretrained, T_max=-1):
@@ -249,6 +239,8 @@ def get_models(arch, n_class, model_seed, pretrained):
         model = ResNet18(num_classes=n_class, seed=model_seed, pretrained=pretrained)
     elif arch == 'resnet50':
         model = ResNet50(num_classes=n_class, seed=model_seed, pretrained=pretrained)
+    elif arch == 'efficientnet_b4':
+        model = EfficientNetB4(num_classes=n_class, seed=model_seed, pretrained=pretrained)
     elif arch == 'densenet121':
         model = DenseNet121(num_classes=n_class, seed=model_seed, pretrained=pretrained)
     elif arch == 'vit_b_16':

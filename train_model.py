@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--lr', default=0.001, type=float)
     parser.add_argument('--pretrained', action='store_true', default=False)
     parser.add_argument('--train_epoch', default=20, type=int)
+    parser.add_argument('--save_interval', default=50, type=int)
     parser.add_argument('--resume_epoch', default=0, type=int)
 
     parser.add_argument('--dataset_seed', default=1, type=int)
@@ -40,11 +41,17 @@ def main():
         os.makedirs(save_dir_path)
 
     # setup train/val_iid loaders
-    trainset, valset = load_train_dataset(dsname=dsname,
-                                     iid_path=args.data_path,
-                                     n_val_samples=args.n_val_samples,
-                                     pretrained=args.pretrained,
-                                     seed=args.dataset_seed)
+    trainset = load_train_dataset(dsname=dsname,
+                                  iid_path=args.data_path,
+                                  n_val_samples=args.n_val_samples,
+                                  pretrained=args.pretrained,
+                                  seed=args.dataset_seed)
+
+    valset = load_train_dataset(dsname=dsname,
+                                  iid_path=args.data_path,
+                                  n_val_samples=args.n_val_samples,
+                                  pretrained=args.pretrained,
+                                  seed=args.dataset_seed)
     
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, num_workers=8, shuffle=True, pin_memory=True)
     valloader = torch.utils.data.DataLoader(valset, batch_size=args.batch_size, num_workers=8, shuffle=False, pin_memory=True)
@@ -123,7 +130,7 @@ def train(net, optimizer, scheduler, trainloader, valloader, save_dir, args, dev
         end = time.time()
         print(f"time used: {end - start}s")
 
-        if epoch % 50 == 0:
+        if epoch % args.save_interval == 0:
             torch.save({
                 'model': net, 
                 'optimizer_state_dict': optimizer.state_dict(),

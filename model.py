@@ -7,6 +7,13 @@ from transformers import BertTokenizerFast, DistilBertTokenizerFast
 import os
 os.environ['CURL_CA_BUNDLE'] = ''
 
+def EfficientNetB4(num_classes, seed=123, pretrained=True):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    model = models.efficientnet_b4(pretrained=pretrained)
+    model.classifier[1] = nn.Linear(1792, num_classes)
+    return model
+    
 
 def ViT_B_16(num_classes=10, seed=123, pretrained=True):
     torch.manual_seed(seed)
