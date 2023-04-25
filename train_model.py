@@ -47,11 +47,11 @@ def main():
                                   pretrained=args.pretrained,
                                   seed=args.dataset_seed)
 
-    valset = load_train_dataset(dsname=dsname,
-                                  iid_path=args.data_path,
-                                  n_val_samples=args.n_val_samples,
-                                  pretrained=args.pretrained,
-                                  seed=args.dataset_seed)
+    valset = load_val_dataset(dsname=dsname,
+                              iid_path=args.data_path,
+                              n_val_samples=args.n_val_samples,
+                              pretrained=args.pretrained,
+                              seed=args.dataset_seed)
     
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, num_workers=8, shuffle=True, pin_memory=True)
     valloader = torch.utils.data.DataLoader(valset, batch_size=args.batch_size, num_workers=8, shuffle=False, pin_memory=True)
