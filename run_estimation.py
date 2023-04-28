@@ -24,7 +24,6 @@ def main():
     parser = argparse.ArgumentParser(description='Estimate target domain performance.')
     parser.add_argument('--arch', default='resnet18', type=str)
     parser.add_argument('--metric', default='EMD', type=str)
-    parser.add_argument('--cost', default='L1', type=str)
     parser.add_argument('--dataset', default='cifar-10', type=str)
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--n_val_samples', default=10000, type=int)
@@ -55,6 +54,7 @@ def main():
     corruption = args.corruption
     severity = args.severity
     n_class = get_n_classes(args.dataset)
+    
 
     # load in iid data for calibration
     val_set = load_val_dataset(dsname=dsname,
@@ -161,7 +161,7 @@ def main():
     elif metric == 'GDE':
         seeds = [0, 1, 10]
         seed_ind = seeds.index(model_seed)
-        alt_model_seed = seeds[ (seed_ind + 1) // len(seeds) ]
+        alt_model_seed = seeds[ (seed_ind + 1) % len(seeds) ]
         ckpt = torch.load(f"{save_dir_path}/base_model_{alt_model_seed}-{model_epoch}.pt", map_location=device)
         alt_model = ckpt['model']
         alt_model.eval()
@@ -169,7 +169,12 @@ def main():
         alt_temp_dir = get_temp_dir(cache_dir, alt_model_seed, model_epoch, opt_bias=opt_bias)
         alt_model = calibrate(alt_model, n_class, opt_bias, val_iid_loader, alt_temp_dir)
         
-        alt_cache_od_dir = f"{cache_dir}/od_p{args.subpopulation}_m{alt_model_seed}-{model_epoch}_c{corruption}-{severity}_n{n_test_sample}.pkl"
+        if pretrained:
+            alt_cache_dir = f"./cache/{dsname}/{args.arch}_{alt_model_seed}-{model_epoch}/pretrained"
+        else:
+            alt_cache_dir = f"./cache/{dsname}/{args.arch}_{alt_model_seed}-{model_epoch}/scratch"
+        
+        alt_cache_od_dir = f"{alt_cache_dir}/od_p{args.subpopulation}_m{alt_model_seed}-{model_epoch}_c{corruption}-{severity}_n{n_test_sample}.pkl"
         _, alt_ood_preds, _ = gather_outputs(alt_model, val_ood_loader, device, alt_cache_od_dir)
         
         est = alt_ood_preds.ne(ood_preds).sum().item() / len(alt_ood_preds)
@@ -209,7 +214,7 @@ def main():
             weights = torch.as_tensor([])
             est = ( ot.emd2(weights, weights, M, numItermax=1e8, numThreads=8) / 2 ).item()
     
-    elif metric == 'COTT':
+    elif metric in ['COTT-MC', 'COTT-NE']:
         thresholds = get_threshold(model, val_iid_loader, n_class, args)
         batch_size = 10000
         n_batch = math.ceil( n_test_sample // batch_size )
@@ -217,8 +222,6 @@ def main():
         print(
             f'total of {n_test_sample} test samples, running {n_batch} batches.'
         )
-        
-        cost = args.cost
         
         if n_batch > 1:
             est = 0
@@ -230,16 +233,20 @@ def main():
                 exp_labels_batch = sample_label_dist(dsname, n_class, batch_size)
                 iid_acts_batch = nn.functional.one_hot(exp_labels_batch)
                 
-                if cost == 'L1':
-                    M = torch.cdist(iid_acts_batch.float(), ood_acts_batch, p=1)
-                elif cost == 'L2':
-                    M = torch.cdist(iid_acts_batch.float(), ood_acts_batch, p=2)
+                M = torch.cdist(iid_acts_batch.float(), ood_acts_batch, p=1)
                 
                 weights = torch.as_tensor([])
                 Pi = ot.emd(weights, weights, M, numItermax=1e8)
                 
-                costs = ( Pi * M.shape[0] * M ).sum(1)
-                est = est + (costs > thresholds).sum().item() / batch_size
+                if metric == 'COTT-MC':
+                    costs = ( Pi * M.shape[0] * M ).sum(1) * -1
+                
+                elif metric == 'COTT-NE':
+                    matched_ood_acts_batch = ood_acts_batch[torch.argmax(Pi, dim=1)]
+                    matched_acts = (matched_ood_acts_batch + iid_acts_batch) / 2
+                    costs = ( matched_acts * torch.log2( matched_acts ) ).sum(1)
+                
+                est = est + (costs < thresholds).sum().item() / batch_size
             
             est = est / n_batch
         
@@ -248,18 +255,19 @@ def main():
             exp_labels = sample_label_dist(dsname, n_class, n_test_sample)
             iid_acts = nn.functional.one_hot(exp_labels)
             
-            if cost == 'L1':
-                M = torch.cdist(iid_acts.float(), ood_acts, p=1)
-            elif cost == 'L2':
-                M = torch.cdist(iid_acts.float(), ood_acts, p=2)
+            M = torch.cdist(iid_acts.float(), ood_acts, p=1)
             
             weights = torch.as_tensor([])
             Pi = ot.emd(weights, weights, M, numItermax=1e8)
             
-            costs = ( Pi * M.shape[0] * M ).sum(1)
-            est = (costs > thresholds).sum().item() / batch_size
-        
-        metric = 'COTT-' + cost
+            if metric == 'COTT-MC':
+                costs = ( Pi * M.shape[0] * M ).sum(1) * -1
+            elif metric == 'COTT-NE':
+                matched_ood_acts = ood_acts[torch.argmax(Pi, dim=1)]
+                matched_acts = (matched_ood_acts + iid_acts) / 2
+                costs = ( matched_acts * torch.log2( matched_acts ) ).sum(1)
+            
+            est = (costs < thresholds).sum().item() / batch_size
     
     elif metric == 'DCOT':
         if args.pretrained:

@@ -9,24 +9,110 @@ import time
 import numpy as np
 from torch_datasets.configs import get_expected_label_distribution
 
+# ----------- helper functions to find threshold -----------
+    
+def get_threshold(net, iid_loader, n_class, args):
+    dsname = args.dataset
+    arch = args.arch
+    model_seed = args.model_seed
+    model_epoch = args.ckpt_epoch
+    metric = args.metric
+    pretrained = args.pretrained
+    
+    if metric == 'ATC':
+        if pretrained:
+            cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/pretrained_{metric}_threshold.json"
+        else:
+            cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/scratch_{metric}_threshold.json"
+        
+        if os.path.exists(cache_dir):
+            with open(cache_dir, 'r') as f:
+                data = json.load(f)
+                t = data['t']
+        else:
+            os.makedirs(os.path.dirname(cache_dir), exist_ok=True)
+            print('compute confidence threshold...')
+            t = compute_t(net, iid_loader).item()
+            with open(cache_dir, 'w') as f:
+                json.dump({'t': t}, f)
+        
+        return t
+    
+    elif metric in ['COTT-MC', 'COTT-NE']:
+        if pretrained:
+            cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/pretrained_{metric}_threshold.json"
+        else:
+            cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/scratch_{metric}_threshold.json"
+        
+        if os.path.exists(cache_dir):
+            with open(cache_dir, 'r') as f:
+                data = json.load(f)
+                t = data['t']
+        else:
+            print('compute confidence threshold...')
+            t = compute_cott(net, iid_loader, n_class, metric)
+            with open(cache_dir, 'w') as f:
+                json.dump({'t': t}, f)
+        
+        return t
 
-def evaluation(net, testloader):
+    elif metric == 'SCOTT':
+        t = compute_sliced_t(net, iid_loader, n_class)
+        
+        return t
+    else:
+        raise ValueError(f'unknown metric {metric}')
+        
+
+def compute_cott(net, iid_loader, n_class, metric):
     net.eval()
-    criterion = nn.CrossEntropyLoss()
-    test_loss = 0
-    correct = 0
-    total = 0
+    softmax_vecs = []
+    preds, tars = [], []
     with torch.no_grad():
-        for _, (inputs, targets) in enumerate(tqdm(testloader)):
+        for _, items in enumerate(tqdm(iid_loader)):
+            inputs, targets = items[0], items[1]
             inputs, targets = inputs.cuda(), targets.cuda()
             outputs = net(inputs)
-            loss = criterion(outputs, targets)
-            test_loss += loss.item() * inputs.size(0)
-            _, predicted = outputs.max(1)
-            correct += predicted.eq(targets).sum().item()
-            total += targets.size(0)
-    return test_loss / total, 100. * correct / total
+            _, prediction = outputs.max(1)
+
+            preds.extend( prediction.tolist() )
+            tars.extend( targets.tolist() )
+            softmax_vecs.append( nn.functional.softmax(outputs, dim=1).cpu() )
     
+    preds, tars  = torch.as_tensor(preds), torch.as_tensor(tars)
+    softmax_vecs = torch.cat(softmax_vecs, dim=0)
+    target_vecs = nn.functional.one_hot(tars)
+    
+    max_n = 10000
+    if len(target_vecs) > max_n:
+        print(f'sampling {max_n} out of {len(target_vecs)} validation samples...')
+        torch.manual_seed(0)
+        rand_inds = torch.randperm(len(target_vecs))
+        tars = tars[rand_inds][:max_n]
+        preds = preds[rand_inds][:max_n]
+        target_vecs = target_vecs[rand_inds][:max_n]
+        softmax_vecs = softmax_vecs[rand_inds][:max_n]
+
+    print('computing assignment...')
+    M = torch.cdist(target_vecs.float(), softmax_vecs, p=1)
+    
+    start = time.time()
+    weights = torch.as_tensor([])
+    Pi = ot.emd(weights, weights, M, numItermax=1e8)
+
+    print(f'done. {time.time() - start}s passed')
+    if metric == 'COTT-MC':
+        costs = ( Pi * M.shape[0] * M ).sum(1) * -1
+    elif metric == 'COTT-NE':
+        matched_softmax = softmax_vecs[torch.argmax(Pi, dim=1)]
+        matched_acts = (matched_softmax + target_vecs) / 2
+        costs = ( matched_acts * torch.log2(matched_acts) ).sum(1)
+    
+    n_incorrect = preds.ne(tars).sum()
+    t = torch.sort( costs )[0][n_incorrect - 1].item()
+    
+    return t
+
 
 def compute_t(net, iid_loader):
     net.eval()
@@ -76,111 +162,9 @@ def compute_sliced_t(net, iid_loader, n_class):
     n_correct = preds.eq(tars).sum()
     t = scores[n_correct - 1]
     return t
-    
 
-def get_threshold(net, iid_loader, n_class, args):
-    dsname = args.dataset
-    arch = args.arch
-    model_seed = args.model_seed
-    model_epoch = args.ckpt_epoch
-    metric = args.metric
-    pretrained = args.pretrained
-    cost = args.cost
-    
-    if metric == 'ATC':
-        if pretrained:
-            cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/pretrained_atc_threshold.json"
-        else:
-            cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/scratch_atc_threshold.json"
-        
-        if os.path.exists(cache_dir):
-            with open(cache_dir, 'r') as f:
-                data = json.load(f)
-                t = data['t']
-        else:
-            os.makedirs(os.path.dirname(cache_dir), exist_ok=True)
-            with open(cache_dir, 'w') as f:
-                print('compute confidence threshold...')
-                t = compute_t(net, iid_loader).item()
-                json.dump({'t': t}, f)
-        
-        return t
-    
-    elif metric == 'COTT':
-        if pretrained:
-            cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/pretrained_cott-{cost}_threshold.json"
-        else:
-            cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/scratch_cott-{cost}_threshold.json"
-        
-        if os.path.exists(cache_dir):
-            with open(cache_dir, 'r') as f:
-                data = json.load(f)
-                t = data['t']
-        else:
-            with open(cache_dir, 'w') as f:
-                print('compute confidence threshold...')
-                t = compute_cott(net, iid_loader, n_class, cost)
-                json.dump({'t': t}, f)
-        
-        return t
 
-    elif metric == 'SCOTT':
-        t = compute_sliced_t(net, iid_loader, n_class)
-        
-        return t
-    else:
-        raise ValueError(f'unknown metric {metric}')
-        
-
-def compute_cott(net, iid_loader, n_class, cost):
-    net.eval()
-    softmax_vecs = []
-    preds, tars = [], []
-    with torch.no_grad():
-        for _, items in enumerate(tqdm(iid_loader)):
-            inputs, targets = items[0], items[1]
-            inputs, targets = inputs.cuda(), targets.cuda()
-            outputs = net(inputs)
-            _, prediction = outputs.max(1)
-
-            preds.extend( prediction.tolist() )
-            tars.extend( targets.tolist() )
-            softmax_vecs.append( nn.functional.softmax(outputs, dim=1).cpu() )
-    
-    preds, tars  = torch.as_tensor(preds), torch.as_tensor(tars)
-    softmax_vecs = torch.cat(softmax_vecs, dim=0)
-    target_vecs = nn.functional.one_hot(tars)
-    
-    max_n = 10000
-    if len(target_vecs) > max_n:
-        print(f'sampling {max_n} out of {len(target_vecs)} validation samples...')
-        torch.manual_seed(0)
-        rand_inds = torch.randperm(len(target_vecs))
-        tars = tars[rand_inds][:max_n]
-        preds = preds[rand_inds][:max_n]
-        target_vecs = target_vecs[rand_inds][:max_n]
-        softmax_vecs = softmax_vecs[rand_inds][:max_n]
-
-    print('computing assignment...')
-    if cost == 'L1':
-        M = torch.cdist(target_vecs.float(), softmax_vecs, p=1)
-    elif cost == 'L2':
-        M = torch.cdist(target_vecs.float(), softmax_vecs, p=2)
-    
-    start = time.time()
-    weights = torch.as_tensor([])
-    Pi = ot.emd(weights, weights, M, numItermax=1e8)
-
-    print(f'done. {time.time() - start}s passed')
-    
-    costs = ( Pi * M.shape[0] * M ).sum(1)
-    
-    n_correct = preds.eq(tars).sum()
-    
-    t = torch.sort( costs )[0][n_correct - 1].item()
-    
-    return t
-
+# ----------- helper functions for evaluation -----------
 
 def gather_outputs(model, dataloader, device, cache_dir):
     if os.path.exists(cache_dir):
@@ -223,6 +207,8 @@ def get_temp_dir(cache_dir, seed, model_epoch, opt_bias=False):
     
     return temp_dir
 
+
+# ----------- helper code for other baselines -----------
 
 class HistogramDensity: 
     def _histedges_equalN(self, x, nbin):
