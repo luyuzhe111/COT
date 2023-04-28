@@ -9,6 +9,7 @@ import time
 import numpy as np
 from torch_datasets.configs import get_expected_label_distribution
 
+
 def evaluation(net, testloader):
     net.eval()
     criterion = nn.CrossEntropyLoss()
@@ -25,50 +26,6 @@ def evaluation(net, testloader):
             correct += predicted.eq(targets).sum().item()
             total += targets.size(0)
     return test_loss / total, 100. * correct / total
-
-
-def baseline_evaluation(net, testloader, val_loader, t, t_vec, net2):
-    net.eval()
-    net2.eval()
-    criterion = nn.CrossEntropyLoss()
-    metrics = torch.tensor([0.0] * 4)
-    test_loss = 0
-    correct = 0
-    total = 0
-
-    print('compute baselines...')
-    with torch.no_grad():
-        for _, (inputs, targets) in enumerate(tqdm(testloader)):
-            inputs, targets = inputs.cuda(), targets.cuda()
-            outputs = net(inputs)
-            outputs2 = net2(inputs)
-
-            # ConfScore
-            softmax = nn.Softmax(dim=1)
-            loss = torch.max(softmax(outputs), dim=1)[0]
-            metrics[0] += loss.sum().item()
-
-            # Entropy
-            loss = torch.sum(-softmax(outputs) * torch.log2(softmax(outputs)), dim=1)
-            metrics[1] += loss.sum().item()
-
-            # ATC
-            s_softmax = torch.sum(softmax(outputs) * torch.log2(softmax(outputs)), dim=1)
-            loss = s_softmax < t
-            metrics[2] += loss.sum().item()
-
-            # Test loss
-            loss = criterion(outputs, targets)
-            test_loss += loss.item() * inputs.size(0)
-            _, predicted = outputs.max(1)
-            _, predicted2 = outputs2.max(1)
-            correct += predicted.eq(targets).sum().item()
-            total += targets.size(0)
-
-            # AgreeScore
-            metrics[3] += predicted.eq(predicted2).sum().item()
-
-    return metrics / total, test_loss / total, 100 * correct / total
     
 
 def compute_t(net, iid_loader):
@@ -90,7 +47,7 @@ def compute_t(net, iid_loader):
     return sorted_s_softmax[misclassified - 1] + 1e-9
 
 
-def compute_st(net, iid_loader, n_class):
+def compute_sliced_t(net, iid_loader, n_class):
     net.eval()
     softmax_vecs = []
     preds, tars = [], []
@@ -168,7 +125,7 @@ def get_threshold(net, iid_loader, n_class, args):
         return t
 
     elif metric == 'SCOTT':
-        t = compute_st(net, iid_loader, n_class)
+        t = compute_sliced_t(net, iid_loader, n_class)
         
         return t
     else:
@@ -256,6 +213,15 @@ def gather_outputs(model, dataloader, device, cache_dir):
         pickle.dump( data, open( cache_dir, "wb" ) )
 
     return act, pred, tar
+
+
+def get_temp_dir(cache_dir, seed, model_epoch, opt_bias=False):
+    if opt_bias:
+        temp_dir = f"{cache_dir}/base_model_{seed}-{model_epoch}_temp_with_bias.json"
+    else:
+        temp_dir = f"{cache_dir}/base_model_{seed}-{model_epoch}_temp.json"
+    
+    return temp_dir
 
 
 class HistogramDensity: 
