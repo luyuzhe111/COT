@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH -N 1
-#SBATCH -t 20:00:00
+#SBATCH -t 16:00:00
 #SBATCH --export=ALL
 #SBATCH --exclusive
 
@@ -11,7 +11,7 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metrics="AC DoC IM ATC COT COTT"
+metrics="GDE COT COTT-MC COTT-NE"
 data_path="./data/ImageNet"
 dataset="ImageNet"
 corruption_path="./data/ImageNet"
@@ -20,10 +20,19 @@ n_val_samples=10000
 batch_size=200
 arch=resnet50
 pretrained="True"
-model_seed=1
+model_seed=$1
 ckpt_epoch=10
 
-corruptions="brightness defocus_blur elastic_transform fog frost gaussian_blur gaussian_noise glass_blur impulse_noise jpeg_compression motion_blur pixelate saturate shot_noise snow spatter speckle_noise zoom_blur contrast"  
+for metric in ${metrics}
+    do
+        for group in {0..3}
+            do
+                python run_estimation.py --pretrained --subpopulation natural --dataset ${dataset} --corruption collection --severity ${group} --model_seed ${model_seed} --ckpt_epoch ${ckpt_epoch}  --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
+            done
+    done
+
+
+corruptions="brightness defocus_blur elastic_transform fog frost gaussian_blur gaussian_noise glass_blur impulse_noise jpeg_compression motion_blur pixelate saturate shot_noise snow spatter speckle_noise zoom_blur contrast"
 
 echo "pretrained model used"
 

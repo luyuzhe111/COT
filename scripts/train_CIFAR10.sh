@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH -N 1
-#SBATCH -t 8:00:00
+#SBATCH -t 18:00:00
 #SBATCH --export=ALL
 #SBATCH --exclusive
 
@@ -9,8 +9,14 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-# cifar-10
-seed=1
 
-# ResNet18
-python train_model.py --dataset CIFAR-10 --data_path ./data/CIFAR-10 --arch resnet18 --batch_size 200 --train_epoch 300 --lr 0.1 --model_seed 1
+seed=0
+arch='resnet50' #'efficientnet_b4'
+
+if [ ${arch} == 'resnet50' ]
+then
+    lr=0.1
+else 
+    lr=0.01
+fi
+python train_model.py --dataset CIFAR-10 --data_path ./data/CIFAR-10 --arch ${arch} --batch_size 200 --train_epoch 300 --lr ${lr} --model_seed ${seed}

@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH -N 1
-#SBATCH -t 6:00:00
+#SBATCH -t 5:00:00
 #SBATCH --export=ALL
 #SBATCH --exclusive
 
@@ -11,16 +11,16 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metrics="AC DoC IM ATC COT COTT"
+metrics="GDE COTT-NE"
 data_path="./data/CIFAR-10"
 dataset="CIFAR-10"
 corruption_path="./data/CIFAR-10-C"
 n_test_samples=-1
 n_val_samples=10000
 batch_size=200
-arch=resnet18
+arch=resnet50
 pretrained="False"
-model_seed=1
+model_seed=$1
 ckpt_epoch=300
 
 corruptions="brightness defocus_blur elastic_transform fog frost gaussian_blur gaussian_noise glass_blur impulse_noise jpeg_compression motion_blur pixelate saturate shot_noise snow spatter speckle_noise zoom_blur contrast"

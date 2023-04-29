@@ -11,16 +11,16 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metrics="AC DoC IM ATC COT COTT"
+metrics="GDE COTT-NE"
 data_path="./data/CIFAR-100"
 dataset="CIFAR-100"
 corruption_path="./data/CIFAR-100-C"
 n_test_samples=-1
 n_val_samples=10000
 batch_size=200
-arch=resnet18
+arch=resnet50
 pretrained="False"
-model_seed=1
+model_seed=$1
 ckpt_epoch=300
 
 for metric in ${metrics}

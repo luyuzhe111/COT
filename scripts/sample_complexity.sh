@@ -11,7 +11,7 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metric="EMD"
+metric="ATC"
 data_path="./data/Tiny-ImageNet"
 dataset="Tiny-ImageNet"
 corruption_path="./data/Tiny-ImageNet-C"
@@ -30,7 +30,7 @@ fi
 
 echo ${corruptions}
 
-for n_test_samples in 5000 2000 1000 500 200 100
+for n_test_samples in 10000 5000 2000 1000 500 200 100
     do
         python run_estimation.py --dataset ${dataset} --corruption clean --severity 0 --model_seed ${model_seed} --n_test_samples ${n_test_samples} --batch_size ${batch_size} --arch ${arch} --metric ${metric} --data_path ${data_path} --corruption_path ${corruption_path}
 
