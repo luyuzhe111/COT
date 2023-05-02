@@ -10,6 +10,7 @@ from wilds.datasets.fmow_dataset import FMoWDataset
 from wilds.datasets.rxrx1_dataset import RxRx1Dataset
 from wilds.datasets.amazon_dataset import AmazonDataset
 from wilds.datasets.civilcomments_dataset import CivilCommentsDataset
+from wilds.datasets.camelyon17_dataset import Camelyon17Dataset
 from collections import Counter
 import random
 
@@ -17,6 +18,14 @@ import random
 def get_expected_label_distribution(dataset):
     if dataset == 'FMoW':
         full_set = FMoWDataset(download=True, root_dir='./data', use_ood_val=True)
+        val_set = full_set.get_subset('id_val', transform=None)
+        label_counts = Counter(val_set.y_array.tolist())
+        total_count = len(val_set.y_array)
+        label_dist = [label_counts[i] / total_count for i in range(len(label_counts))]
+        return label_dist
+    
+    elif dataset == 'Camelyon17':
+        full_set =  Camelyon17Dataset(download=True, root_dir='./data')
         val_set = full_set.get_subset('id_val', transform=None)
         label_counts = Counter(val_set.y_array.tolist())
         total_count = len(val_set.y_array)
@@ -87,6 +96,7 @@ def get_n_classes(dataset):
         'Nonliving-26': 26,
         'Entity-13': 13,
         'Entity-30': 30,
+        'Camelyon17': 2,
         'FMoW': 62,
         'RxRx1': 1139,
         'Amazon': 5,
@@ -125,6 +135,12 @@ def get_transforms(dataset, split, pretrained):
             transforms.CenterCrop(224),
             transforms.ToTensor(),
             transforms.Normalize([0.4717, 0.4499, 0.3837], [0.2600, 0.2516, 0.2575])
+		])
+    
+    elif dataset == 'Camelyon17':
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 		])
     
     elif dataset == 'FMoW':
@@ -184,8 +200,11 @@ def get_optimizer(dsname, net, lr, pretrained):
     elif dsname == 'ImageNet':
         return optim.Adam(net.parameters(), lr=lr)
     
+    elif dsname == 'Camelyon17':
+        return optim.SGD(net.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-4)
+    
     elif dsname in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
-        return optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
+        return optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-2)
 
     elif dsname == 'FMoW':
         return optim.Adam(net.parameters(), lr=lr)
@@ -217,6 +236,9 @@ def get_lr_scheduler(dsname, opt, pretrained, T_max=-1):
     
     elif dsname in ['Entity-13', 'Entity-30']:
         return optim.lr_scheduler.MultiStepLR(opt, milestones=[100, 200], gamma=0.1)
+    
+    elif dsname == 'Camelyon17':
+        return optim.lr_scheduler.MultiStepLR(opt, milestones=[100], gamma=1)
     
     elif dsname == 'FMoW':
         return optim.lr_scheduler.StepLR(opt, step_size=1, gamma=0.96)

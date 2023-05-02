@@ -55,7 +55,6 @@ def main():
     severity = args.severity
     n_class = get_n_classes(args.dataset)
     
-
     # load in iid data for calibration
     val_set = load_val_dataset(dsname=dsname,
                                iid_path=args.data_path,
@@ -121,7 +120,7 @@ def main():
     print('n ood test sample:', n_test_sample)
 
     print('------------------')
-    print(f'validation acc:', iid_acc)
+    print('validation acc:', iid_acc)
     print('validation confidence:', conf)
     print('confidence gap:', conf - iid_acc)
     print('------------------')
@@ -129,14 +128,16 @@ def main():
 
     ood_preds_count = Counter(ood_preds.tolist())
     ood_tars_count = Counter(ood_tars.tolist())
+    iid_preds_count = Counter(iid_tars.tolist())
 
     iid_tars_dist = get_expected_label_distribution(args.dataset)
     ood_tars_dist = [ood_tars_count[i] / len(ood_acts) for i in range(n_class)]
     ood_preds_dist = [ood_preds_count[i] / len(ood_acts) for i in range(n_class)]
+    iid_preds_dist = [iid_preds_count[i] / len(iid_acts) for i in range(n_class)]
 
     print('------------------')
     print("ood real label tv:", sum(abs(np.array(ood_tars_dist) - np.array(iid_tars_dist))) / 2 )
-    print("ood pseudo label tv:", sum(abs(np.array(ood_preds_dist) - np.array(iid_tars_dist))) / 2 )
+    print("ood pseudo label tv:", sum(abs(np.array(ood_preds_dist) - np.array(iid_preds_dist))) / 2 )
     print("ood pseudo-real label tv:", sum(abs(np.array(ood_preds_dist) - np.array(ood_tars_dist))) / 2 )
     print('------------------')
     print()
@@ -162,30 +163,42 @@ def main():
         seeds = [0, 1, 10]
         seed_ind = seeds.index(model_seed)
         alt_model_seed = seeds[ (seed_ind + 1) % len(seeds) ]
-        ckpt = torch.load(f"{save_dir_path}/base_model_{alt_model_seed}-{model_epoch}.pt", map_location=device)
-        alt_model = ckpt['model']
+        alt_ckpt = torch.load(f"{save_dir_path}/base_model_{alt_model_seed}-{model_epoch}.pt", map_location=device)
+        alt_model = alt_ckpt['model']
         alt_model.eval()
-        
-        alt_temp_dir = get_temp_dir(cache_dir, alt_model_seed, model_epoch, opt_bias=opt_bias)
-        alt_model = calibrate(alt_model, n_class, opt_bias, val_iid_loader, alt_temp_dir)
         
         if pretrained:
             alt_cache_dir = f"./cache/{dsname}/{args.arch}_{alt_model_seed}-{model_epoch}/pretrained"
         else:
             alt_cache_dir = f"./cache/{dsname}/{args.arch}_{alt_model_seed}-{model_epoch}/scratch"
         
+        alt_temp_dir = get_temp_dir(alt_cache_dir, alt_model_seed, model_epoch, opt_bias=opt_bias)
+        alt_model = calibrate(alt_model, n_class, opt_bias, val_iid_loader, alt_temp_dir)
+        
         alt_cache_od_dir = f"{alt_cache_dir}/od_p{args.subpopulation}_m{alt_model_seed}-{model_epoch}_c{corruption}-{severity}_n{n_test_sample}.pkl"
         _, alt_ood_preds, _ = gather_outputs(alt_model, val_ood_loader, device, alt_cache_od_dir)
         
         est = alt_ood_preds.ne(ood_preds).sum().item() / len(alt_ood_preds)
     
-    elif metric == 'ATC':
-        t = get_threshold(model, val_iid_loader, n_class, args)
-        s_softmax = torch.sum(ood_acts * torch.log2(ood_acts), dim=1)
-        est = (s_softmax < t).sum().item() / len(ood_acts)
+    elif metric == 'ATC-MC':
+        threshold = get_threshold(model, val_iid_loader, n_class, args)
+        mc = ood_acts.max(1)[0]
+        est = (mc < threshold).sum().item() / len(ood_acts)
+        cost_dist = torch.sort(mc)[0].tolist()
+        
+    elif metric == 'ATC-NE':
+        threshold = get_threshold(model, val_iid_loader, n_class, args)
+        ne = torch.sum(ood_acts * torch.log2(ood_acts), dim=1)
+        est = (ne < threshold).sum().item() / len(ood_acts)
+        cost_dist = torch.sort(ne)[0].tolist()
+    
+    elif metric == 'Pseudo':
+        est = min(
+            sum(abs(np.array(ood_preds_dist) - np.array(iid_preds_dist))) / 2 + (1 - iid_acc), 1
+        )
 
     elif metric == 'COT':
-        batch_size = 10000
+        batch_size = min(10000, n_test_sample)
         n_batch = math.ceil( n_test_sample // batch_size)
         
         print(
@@ -215,8 +228,8 @@ def main():
             est = ( ot.emd2(weights, weights, M, numItermax=1e8, numThreads=8) / 2 ).item()
     
     elif metric in ['COTT-MC', 'COTT-NE']:
-        thresholds = get_threshold(model, val_iid_loader, n_class, args)
-        batch_size = 10000
+        threshold = get_threshold(model, val_iid_loader, n_class, args)
+        batch_size = min(10000, n_test_sample)
         n_batch = math.ceil( n_test_sample // batch_size )
         
         print(
@@ -226,6 +239,7 @@ def main():
         if n_batch > 1:
             est = 0
             random.seed(0)
+            cost_dist = []
             for _ in range(n_batch):
                 rand_inds = torch.as_tensor( random.choices( list(range(n_test_sample)), k=batch_size ) )
                 ood_acts_batch = ood_acts[rand_inds]
@@ -246,9 +260,11 @@ def main():
                     matched_acts = (matched_ood_acts_batch + iid_acts_batch) / 2
                     costs = ( matched_acts * torch.log2( matched_acts ) ).sum(1)
                 
-                est = est + (costs < thresholds).sum().item() / batch_size
+                est = est + (costs < threshold).sum().item() / batch_size
+                cost_dist.append(costs)
             
             est = est / n_batch
+            cost_dist = torch.sort(torch.cat(cost_dist, dim=0))[0].tolist()
         
         else:
             torch.manual_seed(0)
@@ -267,7 +283,8 @@ def main():
                 matched_acts = (matched_ood_acts + iid_acts) / 2
                 costs = ( matched_acts * torch.log2( matched_acts ) ).sum(1)
             
-            est = (costs < thresholds).sum().item() / batch_size
+            est = (costs < threshold).sum().item() / batch_size
+            cost_dist = torch.sort(costs)[0].tolist()
     
     elif metric == 'DCOT':
         if args.pretrained:
@@ -328,7 +345,7 @@ def main():
     else:
         result_dir = f"results/{dsname}/scratch/{args.arch}_{model_seed}-{model_epoch}/{metric}_{n_test_str}/{corruption}.json"
 
-    print(result_dir, os.path.dirname(result_dir), os.path.basename(result_dir))
+    print(result_dir)
     os.makedirs(os.path.dirname(result_dir), exist_ok=True)
 
     if not os.path.exists(result_dir):
@@ -348,9 +365,37 @@ def main():
         'subpopulation': args.subpopulation,
         'pretrained': pretrained
     })
-
+    
     with open(result_dir, 'w') as f:
         json.dump(data, f)
+    
+    if metric in ['ATC-MC', 'ATC-NE', 'COTT-MC', 'COTT-NE']:
+        if args.pretrained:
+            cost_dist_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/{metric}_costs/pretrained_{corruption}.json"
+        else:
+            cost_dist_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/{metric}_costs/scratch_{corruption}.json"
+        
+        os.makedirs(os.path.dirname(cost_dist_dir), exist_ok=True)
+        
+        if not os.path.exists(cost_dist_dir):
+            with open(cost_dist_dir, 'w') as f:
+                json.dump([], f)
+
+        with open(cost_dist_dir, 'r') as f:
+            saved_costs = json.load(f)
+
+        saved_costs.append({
+            'costs': cost_dist, 
+            't': threshold,
+            'ood error': 1 - ood_acc,
+            'iid error': 1 - iid_acc,
+            'pred': ood_preds.tolist(),
+            'pseudo-source shift': sum(abs(np.array(ood_preds_dist) - np.array(iid_tars_dist))) / 2,
+            'pseudo-target shift': sum(abs(np.array(ood_preds_dist) - np.array(ood_tars_dist))) / 2
+        })
+        
+        with open(cost_dist_dir, 'w') as f:
+            json.dump(saved_costs, f)
 
 
 if __name__ == "__main__":

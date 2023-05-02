@@ -9,6 +9,7 @@ import time
 import numpy as np
 from torch_datasets.configs import get_expected_label_distribution
 
+
 # ----------- helper functions to find threshold -----------
     
 def get_threshold(net, iid_loader, n_class, args):
@@ -19,7 +20,7 @@ def get_threshold(net, iid_loader, n_class, args):
     metric = args.metric
     pretrained = args.pretrained
     
-    if metric == 'ATC':
+    if metric in ['ATC-MC', 'ATC-NE']:
         if pretrained:
             cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/pretrained_{metric}_threshold.json"
         else:
@@ -32,7 +33,7 @@ def get_threshold(net, iid_loader, n_class, args):
         else:
             os.makedirs(os.path.dirname(cache_dir), exist_ok=True)
             print('compute confidence threshold...')
-            t = compute_t(net, iid_loader).item()
+            t = compute_t(net, iid_loader, metric).item()
             with open(cache_dir, 'w') as f:
                 json.dump({'t': t}, f)
         
@@ -114,10 +115,12 @@ def compute_cott(net, iid_loader, n_class, metric):
     return t
 
 
-def compute_t(net, iid_loader):
+def compute_t(net, iid_loader, metric):
     net.eval()
     misclassified = 0
-    res = []
+    mc = []
+    ne = []
+    softmax = nn.Softmax(dim=1)
     with torch.no_grad():
         for _, items in enumerate(tqdm(iid_loader)):
             inputs, targets = items[0], items[1]
@@ -125,12 +128,18 @@ def compute_t(net, iid_loader):
             outputs = net(inputs)
             _, predicted = outputs.max(1)
             misclassified += targets.size(0) - predicted.eq(targets).sum().item()
-            softmax = nn.Softmax(dim=1)
-            res.append(torch.sum(softmax(outputs) * torch.log2(softmax(outputs)), dim=1))
-    s_softmax = torch.cat(res)
-
-    sorted_s_softmax = torch.sort(s_softmax)[0]
-    return sorted_s_softmax[misclassified - 1] + 1e-9
+            
+            ne.append(torch.sum(softmax(outputs) * torch.log2(softmax(outputs)), dim=1))
+            mc.append(softmax(outputs).max(1)[0])
+    
+    ne = torch.cat(ne)
+    mc = torch.cat(mc)
+    
+    if metric == 'ATC-MC':
+        t = torch.sort(mc)[0][misclassified - 1]
+    elif metric == 'ATC-NE':
+        t = torch.sort(ne)[0][misclassified - 1]
+    return t
 
 
 def compute_sliced_t(net, iid_loader, n_class):
@@ -194,7 +203,7 @@ def gather_outputs(model, dataloader, device, cache_dir):
         act, pred, tar = torch.concat(acts), torch.concat(preds), torch.as_tensor(tars, device=device)
 
         data = {'act': act.cpu(), 'pred': pred.cpu(), 'tar': tar.cpu()}
-        pickle.dump( data, open( cache_dir, "wb" ) )
+        # pickle.dump( data, open( cache_dir, "wb" ) )
 
     return act, pred, tar
 
