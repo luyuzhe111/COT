@@ -19,16 +19,17 @@ def get_breeds_dataset(data_dir, dsname, subpopulation, split, transform, corr='
     source_label_mapping = get_label_mapping('custom_imagenet', ret[1][0]) 
     target_label_mapping = get_label_mapping('custom_imagenet', ret[1][1])
     assert subpopulation in ['same', 'novel'], 'unknown subpopulation'
-
-    if split == 'train':
+    
+    if split == 'train' or split == 'val':
         dataset = folder.ImageFolder(
-            root=f"{data_dir}/imagenetv1/train/", 
+            root=f"{data_dir}/imagenetv1/{split}/", 
             transform = transform, 
             label_mapping = source_label_mapping
         )
+        
     elif split == 'test':
         dataset =  folder.ImageFolder(
-            root=f"{data_dir}/imagenetv1/val/" if corr == 'clean' else f"{data_dir}/imagenet-c/{corr}/{corr_sev}", 
+            root=f"{data_dir}/imagenetv1/test/" if corr == 'clean' else f"{data_dir}/imagenet-c/{corr}/{corr_sev}", 
             transform = transform, 
             label_mapping = ( source_label_mapping if subpopulation == 'same' else target_label_mapping)
         )
