@@ -172,6 +172,8 @@ def main():
         else:
             alt_cache_dir = f"./cache/{dsname}/{args.arch}_{alt_model_seed}-{model_epoch}/scratch"
         
+        os.makedirs(alt_cache_dir, exist_ok=True)
+        
         alt_temp_dir = get_temp_dir(alt_cache_dir, alt_model_seed, model_epoch, opt_bias=opt_bias)
         alt_model = calibrate(alt_model, n_class, opt_bias, val_iid_loader, alt_temp_dir)
         

@@ -203,7 +203,7 @@ def gather_outputs(model, dataloader, device, cache_dir):
         act, pred, tar = torch.concat(acts), torch.concat(preds), torch.as_tensor(tars, device=device)
 
         data = {'act': act.cpu(), 'pred': pred.cpu(), 'tar': tar.cpu()}
-        # pickle.dump( data, open( cache_dir, "wb" ) )
+        pickle.dump( data, open( cache_dir, "wb" ) )
 
     return act, pred, tar
 
