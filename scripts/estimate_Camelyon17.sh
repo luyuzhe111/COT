@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH -N 1
-#SBATCH -t 5:00:00
+#SBATCH -t 8:00:00
 #SBATCH --export=ALL
 #SBATCH --exclusive
 
@@ -12,7 +12,7 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metrics="AC DoC IM ATC-MC ATC-NE COT COTT-MC"
+metrics="AC DoC IM GDE ATC-MC ATC-NE COT COTT-MC COTT-NE"
 data_path="./data/" 
 dataset="Camelyon17"
 n_test_samples=-1

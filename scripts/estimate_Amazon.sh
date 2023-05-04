@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH -N 1
-#SBATCH -t 5:00:00
+#SBATCH -t 8:00:00
 #SBATCH --export=ALL
 #SBATCH --exclusive
 
@@ -12,14 +12,14 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metrics="AC DoC IM COT COTT"
+metrics="AC DoC IM GDE ATC-MC ATC-NE COT COTT-MC COTT-NE"
 data_path="./data/" 
 dataset="Amazon"
 n_test_samples=-1
 n_val_samples=10000
 batch_size=128
 arch="distilbert-base-uncased"
-model_seed=1
+model_seed=$1
 ckpt_epoch=3
 corruptions='group-1 group-2'
 
@@ -27,6 +27,6 @@ for metric in ${metrics}
     do
     for corruption in ${corruptions}
         do
-        python run_estimation.py --pretrained --corruption ${corruption} --arch ${arch} --metric ${metric} --dataset ${dataset} --subpopulation natural  --batch_size ${batch_size} --n_val_samples ${n_val_samples} --n_test_samples ${n_test_samples} --data_path ${data_path} --ckpt_epoch ${ckpt_epoch}
+        python run_estimation.py --pretrained --model_seed ${model_seed} --corruption ${corruption} --arch ${arch} --metric ${metric} --dataset ${dataset} --subpopulation natural  --batch_size ${batch_size} --n_val_samples ${n_val_samples} --n_test_samples ${n_test_samples} --data_path ${data_path} --ckpt_epoch ${ckpt_epoch}
         done
     done

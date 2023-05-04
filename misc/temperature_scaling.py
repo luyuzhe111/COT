@@ -17,7 +17,7 @@ class ModelWithTemperature(nn.Module):
     def __init__(self, model, n_class, opt_bias=False):
         super(ModelWithTemperature, self).__init__()
         self.model = model
-        self.temperature = nn.Parameter(torch.ones(1) * 1.5)
+        self.temperature = nn.Parameter(torch.ones(1))
         self.bias = nn.Parameter(torch.ones(1, n_class))
         self.opt_bias = opt_bias
         

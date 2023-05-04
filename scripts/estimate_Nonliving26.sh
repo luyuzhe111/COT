@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH -N 1
-#SBATCH -t 9:00:00
+#SBATCH -t 13:00:00
 #SBATCH --export=ALL
 #SBATCH --exclusive
 
@@ -12,7 +12,7 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metrics="AC DoC IM GDE ATC-NE COT COTT-MC COTT-NE"
+metrics="AC DoC IM GDE ATC-MC ATC-NE COT COTT-MC COTT-NE"
 data_path="./data/ImageNet"
 dataset="Nonliving-26"
 n_test_samples=-1

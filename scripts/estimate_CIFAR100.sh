@@ -11,7 +11,7 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metrics="GDE COTT-NE"
+metrics="ATC-MC ATC-NE COTT-MC COTT-NE"
 data_path="./data/CIFAR-100"
 dataset="CIFAR-100"
 corruption_path="./data/CIFAR-100-C"

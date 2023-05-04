@@ -11,7 +11,7 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metrics="GDE COT COTT-MC COTT-NE"
+metrics="ATC-MC ATC-NE COTT-MC COTT-NE"
 data_path="./data/ImageNet"
 dataset="ImageNet"
 corruption_path="./data/ImageNet"

@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH -N 1
-#SBATCH -t 5:00:00
+#SBATCH -t 7:00:00
 #SBATCH --export=ALL
 #SBATCH --exclusive
 
@@ -12,14 +12,14 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metrics="AC DoC IM COT COTT"
+metrics="AC DoC IM ATC-MC ATC-NE COT COTT-MC COTT-NE"
 data_path="./data/" 
 dataset="RxRx1"
 n_test_samples=-1
 n_val_samples=10000
 batch_size=128
 arch=resnet50
-model_seed=1
+model_seed=$1
 ckpt_epoch=90
 corruptions='batch-1 batch-2'
 

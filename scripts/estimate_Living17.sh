@@ -12,7 +12,7 @@ conda activate ood
 
 cd /usr/workspace/lu35/Documents/fot
 
-metrics="AC DoC IM GDE ATC-NE COT COTT-MC COTT-NE"
+metrics="AC DoC IM GDE ATC-MC ATC-NE COT COTT-MC COTT-NE"
 data_path="./data/ImageNet"
 dataset="Living-17"
 n_test_samples=-1
@@ -28,7 +28,6 @@ for metric in ${metrics}
     do
         python run_estimation.py --arch ${arch} --model_seed ${model_seed} --metric ${metric} --dataset ${dataset} --subpopulation same  --batch_size ${batch_size} --n_val_samples ${n_val_samples} --n_test_samples ${n_test_samples} --data_path ${data_path} --ckpt_epoch ${ckpt_epoch}
         python run_estimation.py --arch ${arch} --model_seed ${model_seed} --metric ${metric} --dataset ${dataset} --subpopulation novel --batch_size ${batch_size} --n_val_samples ${n_val_samples} --n_test_samples ${n_test_samples} --data_path ${data_path} --ckpt_epoch ${ckpt_epoch}
-
 
         corruptions="brightness defocus_blur elastic_transform fog frost gaussian_blur gaussian_noise glass_blur impulse_noise jpeg_compression motion_blur pixelate saturate shot_noise snow spatter speckle_noise zoom_blur contrast"
         for corruption in ${corruptions}

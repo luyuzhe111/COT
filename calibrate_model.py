@@ -9,11 +9,11 @@ from utils import gather_outputs
 
 """# Configuration"""
 parser = argparse.ArgumentParser(description='Calibrate Model')
-parser.add_argument('--arch', default='resnet18', type=str)
-parser.add_argument('--data_path', default='./data/CIFAR-100/', type=str)
-parser.add_argument('--corruption_path', default='./data/CIFAR-100-C/', type=str)
-parser.add_argument('--data_type', default='cifar-100', type=str)
-parser.add_argument('--num_classes', default=100, type=int)
+parser.add_argument('--arch', default='resnet50', type=str)
+parser.add_argument('--data_path', default='./data/Tiny-ImageNet/', type=str)
+parser.add_argument('--corruption_path', default='./data/Tiny-ImageNet-C/', type=str)
+parser.add_argument('--data_type', default='tiny-imagenet', type=str)
+parser.add_argument('--num_classes', default=200, type=int)
 parser.add_argument('--batch_size', default=128, type=int)
 parser.add_argument('--model_seed', default="1", type=str)
 parser.add_argument('--seed', default=1, type=int)
@@ -41,8 +41,8 @@ def main():
                                           clean_path=args['data_path'],
                                           corruption_path=args['corruption_path'],
                                           corruption_severity=0,
-                                          type=data_type,
-                                          datatype='train')
+                                          dsname=data_type,
+                                          split='train')
     
     valloader = torch.utils.data.DataLoader(valset, batch_size=args['batch_size'], shuffle=True)
 
