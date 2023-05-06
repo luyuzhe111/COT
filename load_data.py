@@ -36,7 +36,7 @@ def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True)
         dataset = Camelyon17Dataset(download=True, root_dir=iid_path)
     
     elif dsname == 'FMoW':
-        dataset = FMoWDataset(download=False, root_dir=iid_path, use_ood_val=True)
+        dataset = FMoWDataset(download=True, root_dir=iid_path, use_ood_val=True)
     
     elif dsname == 'RxRx1':
         dataset = RxRx1Dataset(download=True, root_dir=iid_path)
@@ -89,10 +89,10 @@ def load_val_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True):
     elif dsname in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
         val_set = get_breeds_dataset(iid_path, dsname, 'same', split='val', transform=transform)
     elif dsname == 'Camelyon17':
-        dataset = Camelyon17Dataset(download=False, root_dir=iid_path)
+        dataset = Camelyon17Dataset(download=True, root_dir=iid_path)
         val_set = dataset.get_subset('id_val', transform=transform)
     elif dsname == 'FMoW':
-        dataset = FMoWDataset(download=False, root_dir=iid_path, use_ood_val=True)
+        dataset = FMoWDataset(download=True, root_dir=iid_path, use_ood_val=True)
         val_set = dataset.get_subset('id_val', transform=transform)
     elif dsname == 'RxRx1':
         dataset = RxRx1Dataset(download=True, root_dir=iid_path)
@@ -137,13 +137,13 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
     elif dsname in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
         dataset = get_breeds_dataset(iid_path, dsname, subpopulation, split='test', transform=transform)
     elif dsname == 'Camelyon17':
-        dataset = Camelyon17Dataset(download=False, root_dir=iid_path)
+        dataset = Camelyon17Dataset(download=True, root_dir=iid_path)
     elif dsname == 'FMoW':
-        dataset = FMoWDataset(download=False, root_dir=iid_path, use_ood_val=True)
+        dataset = FMoWDataset(download=True, root_dir=iid_path, use_ood_val=True)
     elif dsname == 'RxRx1':
-        dataset = RxRx1Dataset(download=False, root_dir=iid_path)
+        dataset = RxRx1Dataset(download=True, root_dir=iid_path)
     elif dsname == 'Amazon':
-        dataset = AmazonDataset(download=False, root_dir=iid_path)
+        dataset = AmazonDataset(download=True, root_dir=iid_path)
     elif dsname == 'CivilComments':
         dataset = CivilCommentsDataset(download=True, root_dir=iid_path)
     else:
@@ -152,7 +152,7 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
     if corr != 'clean':
         if dsname == 'CIFAR-10':
             if corr == 'collection':
-                dataset = CIFAR10v2(root="./data/CIFAR-10-V2", train=True, download=False, transform=transform)
+                dataset = CIFAR10v2(root="./data/CIFAR-10-V2", train=True, download=True, transform=transform)
             else:
                 path_images = os.path.join(corr_path, corr + '.npy')
                 path_labels = os.path.join(corr_path, 'labels.npy')
@@ -202,7 +202,7 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
                 dataset = WILDSSubset(full_testset, ind, None)
         
         elif dsname == 'RxRx1':
-            full_dataset = RxRx1Dataset(download=False, root_dir=iid_path)
+            full_dataset = RxRx1Dataset(download=True, root_dir=iid_path)
             assert corr in ['batch-1', 'batch-2']
             if corr == 'batch-1':
                 dataset = full_dataset.get_subset('val', transform=transform)
@@ -210,7 +210,7 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
                 dataset = full_dataset.get_subset('test', transform=transform)
         
         elif dsname == 'Amazon':
-            full_dataset = AmazonDataset(download=False, root_dir=iid_path)
+            full_dataset = AmazonDataset(download=True, root_dir=iid_path)
             assert corr in ['group-1', 'group-2']
             if corr == 'group-1':
                 dataset = full_dataset.get_subset('val', transform=transform)
@@ -218,7 +218,7 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
                 dataset = full_dataset.get_subset('test', transform=transform)
         
         elif dsname == 'CivilComments':
-            full_dataset = CivilCommentsDataset(download=False, root_dir=iid_path)
+            full_dataset = CivilCommentsDataset(download=True, root_dir=iid_path)
             assert corr_sev in [i for i in range(8)]
             
             if corr_sev == 0:

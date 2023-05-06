@@ -188,7 +188,7 @@ def gather_outputs(model, dataloader, device, cache_dir):
         print('computing result for', cache_dir)
         with torch.no_grad():
             for items in tqdm(dataloader):
-                inputs, targets = items[0], items[1]               
+                inputs, targets = items[0], items[1]            
                 inputs, targets = inputs.to(device), targets.to(device)
                 outputs = model(inputs)
 

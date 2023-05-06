@@ -15,7 +15,6 @@ if not os.path.exists(val_dir):
     random.shuffle(files)
 
     val_files = files[:50000]
-    breakpoint()
     for f in tqdm(val_files):
         folder = os.path.dirname(f).split('/')[-1]
         file = os.path.basename(f)

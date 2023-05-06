@@ -17,7 +17,7 @@ import time
 import math
 import ot
 
-
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 def main():
     # generic configs
@@ -77,11 +77,14 @@ def main():
     val_ood_loader = torch.utils.data.DataLoader(valset_ood, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     n_test_sample = len(valset_ood)
+    
+    opt_bias = False
+    cal_str = 'bcts' if opt_bias else 'ts'
 
     if pretrained:
-        cache_dir = f"./cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/pretrained"
+        cache_dir = f"./cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/pretrained_{cal_str}"
     else:
-        cache_dir = f"./cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/scratch"
+        cache_dir = f"./cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/scratch_{cal_str}"
 
     os.makedirs(cache_dir, exist_ok=True)
     cache_id_dir = f"{cache_dir}/id_m{model_seed}-{model_epoch}_d{args.dataset_seed}.pkl"
@@ -93,13 +96,12 @@ def main():
         save_dir_path = f"./checkpoints/{dsname}/{args.arch}/scratch"
 
     ckpt = torch.load(f"{save_dir_path}/base_model_{args.model_seed}-{model_epoch}.pt", map_location=device)
-    model = ckpt['model']
+    model = ckpt['model'].module
     model.eval()
     
     # use temperature scaling to calibrate model
     print('calibrating models...')
     
-    opt_bias = False
     temp_dir = get_temp_dir(cache_dir, model_seed, model_epoch, opt_bias=opt_bias)
     
     model = calibrate(model, n_class, opt_bias, val_iid_loader, temp_dir)
@@ -164,13 +166,13 @@ def main():
         seed_ind = seeds.index(model_seed)
         alt_model_seed = seeds[ (seed_ind + 1) % len(seeds) ]
         alt_ckpt = torch.load(f"{save_dir_path}/base_model_{alt_model_seed}-{model_epoch}.pt", map_location=device)
-        alt_model = alt_ckpt['model']
+        alt_model = alt_ckpt['model'].module
         alt_model.eval()
         
         if pretrained:
-            alt_cache_dir = f"./cache/{dsname}/{args.arch}_{alt_model_seed}-{model_epoch}/pretrained"
+            alt_cache_dir = f"./cache/{dsname}/{args.arch}_{alt_model_seed}-{model_epoch}/pretrained_{cal_str}"
         else:
-            alt_cache_dir = f"./cache/{dsname}/{args.arch}_{alt_model_seed}-{model_epoch}/scratch"
+            alt_cache_dir = f"./cache/{dsname}/{args.arch}_{alt_model_seed}-{model_epoch}/scratch_{cal_str}"
         
         os.makedirs(alt_cache_dir, exist_ok=True)
         
@@ -342,10 +344,11 @@ def main():
     print()
 
     n_test_str = args.n_test_samples
+    
     if pretrained:
-        result_dir = f"results/{dsname}/pretrained/{args.arch}_{model_seed}-{model_epoch}/{metric}_{n_test_str}/{corruption}.json"
+        result_dir = f"results/{dsname}/pretrained_{cal_str}/{args.arch}_{model_seed}-{model_epoch}/{metric}_{n_test_str}/{corruption}.json"
     else:
-        result_dir = f"results/{dsname}/scratch/{args.arch}_{model_seed}-{model_epoch}/{metric}_{n_test_str}/{corruption}.json"
+        result_dir = f"results/{dsname}/scratch_{cal_str}/{args.arch}_{model_seed}-{model_epoch}/{metric}_{n_test_str}/{corruption}.json"
 
     print(result_dir)
     os.makedirs(os.path.dirname(result_dir), exist_ok=True)

@@ -18,7 +18,7 @@ class ModelWithTemperature(nn.Module):
         super(ModelWithTemperature, self).__init__()
         self.model = model
         self.temperature = nn.Parameter(torch.ones(1))
-        self.bias = nn.Parameter(torch.ones(1, n_class))
+        self.bias = nn.Parameter(torch.zeros(1, n_class))
         self.opt_bias = opt_bias
         
     def forward(self, input):
@@ -71,7 +71,7 @@ class ModelWithTemperature(nn.Module):
         else:
             params = [self.temperature]
         
-        optimizer = optim.LBFGS(params, lr=0.01, max_iter=5000)
+        optimizer = optim.LBFGS(params, lr=0.01, max_iter=500000)
 
         def eval():
             optimizer.zero_grad()
