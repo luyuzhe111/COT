@@ -19,13 +19,12 @@ def get_threshold(net, iid_loader, n_class, args):
     model_epoch = args.ckpt_epoch
     metric = args.metric
     pretrained = args.pretrained
+    if pretrained:
+        cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/pretrained_ts_{metric}_threshold.json"
+    else:
+        cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/scratch_ts_{metric}_threshold.json"
     
     if metric in ['ATC-MC', 'ATC-NE']:
-        if pretrained:
-            cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/pretrained_{metric}_threshold.json"
-        else:
-            cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/scratch_{metric}_threshold.json"
-        
         if os.path.exists(cache_dir):
             with open(cache_dir, 'r') as f:
                 data = json.load(f)
@@ -40,11 +39,6 @@ def get_threshold(net, iid_loader, n_class, args):
         return t
     
     elif metric in ['COTT-MC', 'COTT-NE']:
-        if pretrained:
-            cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/pretrained_{metric}_threshold.json"
-        else:
-            cache_dir = f"cache/{dsname}/{arch}_{model_seed}-{model_epoch}/scratch_{metric}_threshold.json"
-        
         if os.path.exists(cache_dir):
             with open(cache_dir, 'r') as f:
                 data = json.load(f)
@@ -59,7 +53,6 @@ def get_threshold(net, iid_loader, n_class, args):
 
     elif metric == 'SCOTT':
         t = compute_sliced_t(net, iid_loader, n_class)
-        
         return t
     else:
         raise ValueError(f'unknown metric {metric}')

@@ -4,7 +4,7 @@ from model import ResNet18, ResNet50, VGG11
 from misc.temperature_scaling import calibrate
 from collections import Counter
 from utils import gather_outputs, get_threshold, get_im_estimate, get_temp_dir
-from misc.torch_interp import interpolate
+from label_shift_utils import get_dirichlet_marginal, get_resampled_indices
 import os
 import json
 import random
@@ -17,7 +17,7 @@ import time
 import math
 import ot
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 def main():
     # generic configs
@@ -109,6 +109,26 @@ def main():
 
     iid_acts, iid_preds, iid_tars = gather_outputs(model, val_iid_loader, device, cache_id_dir)
     ood_acts, ood_preds, ood_tars = gather_outputs(model, val_ood_loader, device, cache_od_dir)
+    
+    da = 50
+    src_label_dist = np.array(get_expected_label_distribution(dsname))
+    target_label_dist = get_dirichlet_marginal(
+        da * get_n_classes(dsname) * src_label_dist, 1
+    )
+    target_test_idx = get_resampled_indices(
+        ood_tars.cpu().numpy(),
+        n_class,
+        target_label_dist,
+        seed=1,
+    )
+    
+    ood_acts = ood_acts[target_test_idx]
+    ood_preds = ood_preds[target_test_idx]
+    ood_tars = ood_tars[target_test_idx]
+    
+    n_test_sample = len(ood_tars)
+    
+    print('shifted target marginal:', target_label_dist.tolist())
     
     act_fn = nn.Softmax(dim=1)
     iid_acts = act_fn(iid_acts).cpu()
@@ -346,9 +366,9 @@ def main():
     n_test_str = args.n_test_samples
     
     if pretrained:
-        result_dir = f"results/{dsname}/pretrained_{cal_str}/{args.arch}_{model_seed}-{model_epoch}/{metric}_{n_test_str}/{corruption}.json"
+        result_dir = f"results/{dsname}/pretrained_{cal_str}/da_{da}/{args.arch}_{model_seed}-{model_epoch}/{metric}_{n_test_str}/{corruption}.json"
     else:
-        result_dir = f"results/{dsname}/scratch_{cal_str}/{args.arch}_{model_seed}-{model_epoch}/{metric}_{n_test_str}/{corruption}.json"
+        result_dir = f"results/{dsname}/scratch_{cal_str}/da_{da}/{args.arch}_{model_seed}-{model_epoch}/{metric}_{n_test_str}/{corruption}.json"
 
     print(result_dir)
     os.makedirs(os.path.dirname(result_dir), exist_ok=True)
@@ -376,9 +396,9 @@ def main():
     
     if metric in ['ATC-MC', 'ATC-NE', 'COTT-MC', 'COTT-NE']:
         if args.pretrained:
-            cost_dist_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/{metric}_costs/pretrained_{corruption}.json"
+            cost_dist_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/pretrained_{cal_str}/da_{da}/{metric}_costs/{corruption}.json"
         else:
-            cost_dist_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/{metric}_costs/scratch_{corruption}.json"
+            cost_dist_dir = f"cache/{dsname}/{args.arch}_{model_seed}-{model_epoch}/scratch_{cal_str}/da_{da}/{metric}_costs/{corruption}.json"
         
         os.makedirs(os.path.dirname(cost_dist_dir), exist_ok=True)
         
@@ -395,6 +415,7 @@ def main():
             'ood error': 1 - ood_acc,
             'iid error': 1 - iid_acc,
             'pred': ood_preds.tolist(),
+            'target': ood_tars.tolist(),
             'pseudo-source shift': sum(abs(np.array(ood_preds_dist) - np.array(iid_tars_dist))) / 2,
             'pseudo-target shift': sum(abs(np.array(ood_preds_dist) - np.array(ood_tars_dist))) / 2
         })
