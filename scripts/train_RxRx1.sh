@@ -1,13 +1,4 @@
-#!/bin/sh
-#SBATCH -N 1
-#SBATCH -t 15:00:00
-#SBATCH --export=ALL
-#SBATCH --exclusive
-
-source ~/.bashrc
-conda activate ood
-
-cd /usr/workspace/lu35/Documents/fot
+#!/bin/bash
 
 model_seed=$1
 

@@ -1,18 +1,6 @@
-#!/bin/sh
-#SBATCH -N 1
-#SBATCH -t 8:00:00
-#SBATCH --export=ALL
-#SBATCH --exclusive
+#!/bin/bash
 
-
-module load cuda/11.1.0
-
-source ~/.bashrc
-conda activate ood
-
-cd /usr/workspace/lu35/Documents/fot
-
-metrics="AC DoC IM ATC-MC ATC-NE COT COTT-MC COTT-NE"
+metrics="COTT-MC"
 data_path="./data/" 
 dataset="CivilComments"
 n_test_samples=-1
@@ -25,8 +13,8 @@ corruption='identity'
 
 for metric in ${metrics}
     do 
-        for level in {0..7}
+        for level in {1..7}
             do
-            python run_estimation.py --pretrained --corruption ${corruption} --severity ${level} --arch ${arch} --metric ${metric} --dataset ${dataset} --subpopulation natural  --batch_size ${batch_size} --n_val_samples ${n_val_samples} --n_test_samples ${n_test_samples} --data_path ${data_path} --ckpt_epoch ${ckpt_epoch}
+            python run_estimation.py --pretrained --corruption ${corruption} --severity ${level} --arch ${arch} --metric ${metric} --dataset ${dataset} --subpopulation natural  --batch_size ${batch_size} --n_val_samples ${n_val_samples} --n_test_samples ${n_test_samples} --data_path ${data_path} --ckpt_epoch ${ckpt_epoch} --model_seed ${model_seed}
             done
     done

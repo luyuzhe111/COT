@@ -1,24 +1,13 @@
-#!/bin/sh
-#SBATCH -N 1
-#SBATCH -t 5:00:00
-#SBATCH --export=ALL
-#SBATCH --exclusive
+#!/bin/bash
 
-module load cuda/11.1.0
-
-source ~/.bashrc
-conda activate ood
-
-cd /usr/workspace/lu35/Documents/fot
-
-metrics="ATC-MC ATC-NE COTT-MC COTT-NE"
+metrics="GDE" # "AC DoC IM GDE ATC-MC ATC-NE COT COTT-MC"
 data_path="./data/CIFAR-10"
 dataset="CIFAR-10"
 corruption_path="./data/CIFAR-10-C"
 n_test_samples=-1
 n_val_samples=10000
 batch_size=200
-arch=resnet50
+arch=resnet18
 pretrained="False"
 model_seed=$1
 ckpt_epoch=300

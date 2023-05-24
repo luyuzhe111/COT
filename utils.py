@@ -38,7 +38,7 @@ def get_threshold(net, iid_loader, n_class, args):
         
         return t
     
-    elif metric in ['COTT-MC', 'COTT-NE']:
+    elif metric in ['COTT-MC', 'COTT-NE', 'COTT-val-MC']:
         if os.path.exists(cache_dir):
             with open(cache_dir, 'r') as f:
                 data = json.load(f)
@@ -77,34 +77,39 @@ def compute_cott(net, iid_loader, n_class, metric):
     softmax_vecs = torch.cat(softmax_vecs, dim=0)
     target_vecs = nn.functional.one_hot(tars)
     
-    max_n = 10000
-    if len(target_vecs) > max_n:
-        print(f'sampling {max_n} out of {len(target_vecs)} validation samples...')
-        torch.manual_seed(0)
-        rand_inds = torch.randperm(len(target_vecs))
-        tars = tars[rand_inds][:max_n]
-        preds = preds[rand_inds][:max_n]
-        target_vecs = target_vecs[rand_inds][:max_n]
-        softmax_vecs = softmax_vecs[rand_inds][:max_n]
+    if metric == 'COTT-val-MC':
+        n_incorrect = preds.ne(tars).sum()
+        costs = (1 - softmax_vecs.amax(1)) * 2 * -1
+        t = torch.sort( costs )[0][n_incorrect - 1].item()
+    else:
+        max_n = 10000
+        if len(target_vecs) > max_n:
+            print(f'sampling {max_n} out of {len(target_vecs)} validation samples...')
+            torch.manual_seed(0)
+            rand_inds = torch.randperm(len(target_vecs))
+            tars = tars[rand_inds][:max_n]
+            preds = preds[rand_inds][:max_n]
+            target_vecs = target_vecs[rand_inds][:max_n]
+            softmax_vecs = softmax_vecs[rand_inds][:max_n]
 
-    print('computing assignment...')
-    M = torch.cdist(target_vecs.float(), softmax_vecs, p=1)
-    
-    start = time.time()
-    weights = torch.as_tensor([])
-    Pi = ot.emd(weights, weights, M, numItermax=1e8)
+        print('computing assignment...')
+        M = torch.cdist(target_vecs.float(), softmax_vecs, p=1)
+        
+        start = time.time()
+        weights = torch.as_tensor([])
+        Pi = ot.emd(weights, weights, M, numItermax=1e8)
 
-    print(f'done. {time.time() - start}s passed')
-    if metric == 'COTT-MC':
-        costs = ( Pi * M.shape[0] * M ).sum(1) * -1
-    elif metric == 'COTT-NE':
-        matched_softmax = softmax_vecs[torch.argmax(Pi, dim=1)]
-        matched_acts = (matched_softmax + target_vecs) / 2
-        costs = ( matched_acts * torch.log2(matched_acts) ).sum(1)
-    
-    n_incorrect = preds.ne(tars).sum()
-    t = torch.sort( costs )[0][n_incorrect - 1].item()
-    
+        print(f'done. {time.time() - start}s passed')
+        if metric == 'COTT-MC':
+            costs = ( Pi * M.shape[0] * M ).sum(1) * -1
+        elif metric == 'COTT-NE':
+            matched_softmax = softmax_vecs[torch.argmax(Pi, dim=1)]
+            matched_acts = (matched_softmax + target_vecs) / 2
+            costs = ( matched_acts * torch.log2(matched_acts) ).sum(1)
+        
+        n_incorrect = preds.ne(tars).sum()
+        t = torch.sort( costs )[0][n_incorrect - 1].item()
+        
     return t
 
 

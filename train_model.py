@@ -8,6 +8,7 @@ from torch_datasets.configs import (
 import time
 import torch.backends.cudnn as cudnn
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 def main():
     parser = argparse.ArgumentParser(description='Train.')

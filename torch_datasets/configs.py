@@ -69,6 +69,23 @@ def get_expected_label_distribution(dataset):
     return config[dataset]
 
 
+def sample_val_label_dist(dist, n_class, sample_size):
+    labels = sum([[i] * int(dist[i] * sample_size) for i in range(n_class)], [])
+    
+    remainder = sample_size - len(labels)
+    
+    r_labels = random.choices(
+        list(range(n_class)), 
+        weights=dist, 
+        k=remainder
+    )
+    
+    labels = labels + r_labels
+    
+    return torch.as_tensor(labels)
+
+
+
 def sample_label_dist(ds, n_class, sample_size):
     dist = get_expected_label_distribution(ds)
     labels = sum([[i] * int(dist[i] * sample_size) for i in range(n_class)], [])
@@ -111,12 +128,14 @@ def get_transforms(dataset, split, pretrained):
         if pretrained:
             transform = transforms.Compose([
                 transforms.Resize(224),
+                transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
             ])
         else:
             transform = transforms.Compose([
                 transforms.Resize(224),
+                transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
                 transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
             ])

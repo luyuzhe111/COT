@@ -1,18 +1,6 @@
-#!/bin/sh
-#SBATCH -N 1
-#SBATCH -t 12:00:00
-#SBATCH --export=ALL
-#SBATCH --exclusive
+#!/bin/bash
 
-
-module load cuda/11.1.0
-
-source ~/.bashrc
-conda activate ood
-
-cd /usr/workspace/lu35/Documents/fot
-
-metrics="AC DoC IM GDE ATC-MC ATC-NE COT COTT-MC COTT-NE"
+metrics="GDE" # "AC DoC IM GDE ATC-MC ATC-NE COT COTT-MC"
 data_path="./data/ImageNet"
 dataset="Living-17"
 n_test_samples=-1
