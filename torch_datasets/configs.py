@@ -119,7 +119,8 @@ def get_n_classes(dataset):
         'RxRx1': 1139,
         'Amazon': 5,
         'CivilComments': 2,
-        'ColoredMNIST': 2
+        'ColoredMNIST': 2,
+        'iWildCam': 183
     }
 
     return n_class[dataset]
@@ -127,19 +128,25 @@ def get_n_classes(dataset):
 
 def get_transforms(dataset, split, pretrained):
     if dataset in ['CIFAR-10', 'CIFAR-100', 'Tiny-ImageNet']:
-        if pretrained:
-            transform = transforms.Compose([
-                transforms.Resize(224),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            ])
+        if split == 'train':
+            if pretrained:
+                transform = transforms.Compose([
+                    transforms.Resize(224),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+                ])
+            else:
+                transform = transforms.Compose([
+                    transforms.Resize(224),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+                ])
         else:
             transform = transforms.Compose([
-                transforms.Resize(224),
-                transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
-                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
             ])
     
     elif dataset == 'ImageNet':
@@ -171,6 +178,12 @@ def get_transforms(dataset, split, pretrained):
 		])
     
     elif dataset == 'FMoW':
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+		])
+    
+    elif dataset == 'iWildCam':
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
@@ -238,6 +251,9 @@ def get_optimizer(dsname, net, lr, pretrained):
 
     elif dsname == 'FMoW':
         return optim.Adam(net.parameters(), lr=lr)
+
+    elif dsname == 'iWildCam':
+        return optim.Adam(net.parameters(), lr=lr)
     
     elif dsname == 'RxRx1':
         return optim.Adam(net.parameters(), lr=lr, weight_decay=1e-5)
@@ -272,6 +288,9 @@ def get_lr_scheduler(dsname, opt, pretrained, T_max=-1):
     
     elif dsname == 'Camelyon17':
         return optim.lr_scheduler.MultiStepLR(opt, milestones=[100], gamma=1)
+
+    elif dsname == 'iWildCam':
+        return optim.lr_scheduler.CosineAnnealingLR(opt, T_max=T_max)
     
     elif dsname == 'FMoW':
         return optim.lr_scheduler.StepLR(opt, step_size=1, gamma=0.96)

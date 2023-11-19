@@ -13,7 +13,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 def main():
     parser = argparse.ArgumentParser(description='Train.')
     parser.add_argument('--dataset', default='CIFAR-10', type=str)
-    parser.add_argument('--data_path', default='./data/CIFAR-10', type=str)
+    parser.add_argument('--data_path', default='./data', type=str)
     parser.add_argument('--n_val_samples', default=10000, type=int)
     parser.add_argument('--arch', default='resnet18', type=str)
     parser.add_argument('--batch_size', default=64, type=int)
@@ -21,7 +21,7 @@ def main():
     parser.add_argument('--pretrained', action='store_true', default=False)
     parser.add_argument('--train_epoch', default=20, type=int)
     parser.add_argument('--eval_interval', default=1, type=int)
-    parser.add_argument('--save_interval', default=50, type=int)
+    parser.add_argument('--save_interval', default=5, type=int)
     parser.add_argument('--resume_epoch', default=0, type=int)
 
     parser.add_argument('--dataset_seed', default=1, type=int)

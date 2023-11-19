@@ -1,8 +1,19 @@
-# Predicting Out-of-Distribution Error with Confidence Optimal Transport
+# Charaterizing Out-of-distribution Error via Optimal Transport
 
-```run_estimation.py``` implements our proposed Confidence Optimal Transport algorithm.
+This repository is the official implementation of our NeurIPS 2023 paper [Charaterizing Out-of-distribution Error via Optimal Transport](https://openreview.net/forum?id=dz5X8hnfJc). A shorted version, [Predicting Out-of-Distribution Error with Confidence Optimal Transport](https://openreview.net/forum?id=dNGxmwRpFyG), was published earlier in ICLR 2023 Workshop. 
 
 
-### Helpful Resources
+```run_estimation.py``` contains implementation of COT/COTT and baselines we compare against. 
 
-1. [On distributed & mixed-precision training in pytorch.](https://theaisummer.com/distributed-training-pytorch/)
+
+## Questions?
+
+Feel free to open an issue, or contact me at yuzhelu@cs.cmu.edu.
+
+## Credits
+
+We built upon code for [ATC](https://github.com/saurabhgarg1996/ATC_code/tree/6f1e336509893f2a8e3df09198bcefccabb4d811) and [RLSBench](https://github.com/acmi-lab/RLSbench). We thank the authors for open sourcing their code. 
+
+
+
+

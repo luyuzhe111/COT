@@ -11,6 +11,7 @@ from wilds.datasets.rxrx1_dataset import RxRx1Dataset
 from wilds.datasets.amazon_dataset import AmazonDataset
 from wilds.datasets.camelyon17_dataset import Camelyon17Dataset
 from wilds.datasets.civilcomments_dataset import CivilCommentsDataset
+from wilds.datasets.iwildcam_dataset import IWildCamDataset
 from wilds.datasets.wilds_dataset import WILDSSubset
 
 
@@ -33,6 +34,9 @@ def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True)
     elif dsname == 'Camelyon17':
         dataset = Camelyon17Dataset(download=True, root_dir=iid_path)
     
+    elif dsname == 'iWildCam':
+        dataset = IWildCamDataset(download=True, root_dir=iid_path)
+    
     elif dsname == 'FMoW':
         dataset = FMoWDataset(download=True, root_dir=iid_path, use_ood_val=True)
     
@@ -54,6 +58,8 @@ def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True)
     if dsname in ['ImageNet', 'Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30', 'ColoredMNIST']:
         train_set = dataset
     elif dsname == 'Camelyon17':
+        train_set = dataset.get_subset('train', transform=transform)
+    elif dsname == 'iWildCam':
         train_set = dataset.get_subset('train', transform=transform)
     elif dsname == 'FMoW':
         train_set = dataset.get_subset('train', transform=transform)
@@ -91,6 +97,9 @@ def load_val_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True):
         val_set = get_breeds_dataset(iid_path, dsname, 'same', split='val', transform=transform)
     elif dsname == 'Camelyon17':
         dataset = Camelyon17Dataset(download=True, root_dir=iid_path)
+        val_set = dataset.get_subset('id_val', transform=transform)
+    elif dsname == 'iWildCam':
+        dataset = IWildCamDataset(download=True, root_dir=iid_path)
         val_set = dataset.get_subset('id_val', transform=transform)
     elif dsname == 'FMoW':
         dataset = FMoWDataset(download=True, root_dir=iid_path, use_ood_val=True)
@@ -145,6 +154,8 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
         dataset = Camelyon17Dataset(download=True, root_dir=iid_path)
     elif dsname == 'FMoW':
         dataset = FMoWDataset(download=True, root_dir=iid_path, use_ood_val=True)
+    elif dsname == 'iWildCam':
+        dataset = IWildCamDataset(download=True, root_dir=iid_path)
     elif dsname == 'RxRx1':
         dataset = RxRx1Dataset(download=True, root_dir=iid_path)
     elif dsname == 'Amazon':
@@ -242,14 +253,6 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
                 dataset = dataset.get_subset('test', transform = transform)
             else:
                 raise ValueError('unknown corruption')
-            
-    # randomly subsample test set to see sample complexity
-    # if n_test_sample != -1 and n_test_sample < 10000:
-    #     torch.manual_seed(seed)
-    #     torch.cuda.manual_seed(seed)
-    #     indices = torch.randperm(10000)[:n_test_sample]
-    #     dataset = torch.utils.data.Subset(dataset, indices)
-    #     print('number of test data: ', len(dataset))
 
     return dataset
         
