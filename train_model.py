@@ -20,6 +20,7 @@ def main():
     parser.add_argument('--lr', default=0.001, type=float)
     parser.add_argument('--pretrained', action='store_true', default=False)
     parser.add_argument('--train_epoch', default=20, type=int)
+    parser.add_argument('--eval_interval', default=1, type=int)
     parser.add_argument('--save_interval', default=50, type=int)
     parser.add_argument('--resume_epoch', default=0, type=int)
 
@@ -111,7 +112,7 @@ def train(net, optimizer, scheduler, trainloader, valloader, save_dir, args, dev
             _, predicted = outputs.max(1)
             total += targets.size(0)
             correct += predicted.eq(targets).sum().item()
-            if batch_idx % 20 == 0:
+            if batch_idx % 2 == 0:
                 for param_group in optimizer.param_groups:
                     current_lr = param_group['lr']
                 print('Epoch: ', epoch, '(', batch_idx, '/', len(trainloader), ')',
@@ -139,7 +140,7 @@ def train(net, optimizer, scheduler, trainloader, valloader, save_dir, args, dev
             },
             f"{save_dir}/base_model_{args.model_seed}-{epoch + args.resume_epoch}.pt")
 
-        if epoch % 10 == 0:
+        if epoch % args.eval_interval == 0:
             net.eval()
             val_total = 0
             val_correct = 0

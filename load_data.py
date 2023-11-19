@@ -3,12 +3,10 @@ from torchvision.datasets import CIFAR10, CIFAR100, ImageFolder
 import os
 import numpy as np
 from torch_datasets.configs import get_transforms
-from torch_datasets.breeds import get_breeds_dataset
+from torch_datasets.color_mnist import ColoredMNIST
 from torch_datasets.imagenet import get_imagenet_dataset
-from torch_datasets.tiny_imagenet import TinyImageNetCorrupted
 from torch_datasets.cifar20 import get_coarse_labels
 from torch_datasets.cifar10 import CIFAR10v2
-from wilds.datasets.fmow_dataset import FMoWDataset
 from wilds.datasets.rxrx1_dataset import RxRx1Dataset
 from wilds.datasets.amazon_dataset import AmazonDataset
 from wilds.datasets.camelyon17_dataset import Camelyon17Dataset
@@ -46,11 +44,14 @@ def load_train_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True)
     
     elif dsname == 'CivilComments':
         dataset = CivilCommentsDataset(download=True, root_dir=iid_path)
+    
+    elif dsname == 'ColoredMNIST':
+        dataset = ColoredMNIST(root=iid_path, split='train', transform=transform)
 
     else:
         raise ValueError('unknown dataset')
     
-    if dsname in ['ImageNet', 'Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
+    if dsname in ['ImageNet', 'Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30', 'ColoredMNIST']:
         train_set = dataset
     elif dsname == 'Camelyon17':
         train_set = dataset.get_subset('train', transform=transform)
@@ -103,6 +104,8 @@ def load_val_dataset(dsname, iid_path, n_val_samples, seed=1, pretrained=True):
     elif dsname == 'CivilComments':
         dataset = CivilCommentsDataset(download=True, root_dir=iid_path)
         val_set = dataset.get_subset('val', transform=transform)
+    elif dsname == 'ColoredMNIST':
+        val_set = ColoredMNIST(root=iid_path, split='validate', transform=transform)
     else:
         if dsname == "CIFAR-10":
             dataset = CIFAR10(iid_path, train=True, transform=transform, download=True)
@@ -132,6 +135,8 @@ def load_test_dataset(dsname, iid_path, subpopulation, corr_path, corr, corr_sev
         dataset = CIFAR10(iid_path, train=False, transform=transform, download=True)
     elif dsname == "CIFAR-100":
         dataset = CIFAR100(iid_path, train=False, transform=transform, download=True)
+    elif dsname == 'ColoredMNIST':
+        dataset = ColoredMNIST(root=iid_path, split='test', transform=transform)
     elif dsname == 'ImageNet':
         dataset = ImageFolder(f"{iid_path}/imagenetv1/test/", transform=transform)
     elif dsname in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:

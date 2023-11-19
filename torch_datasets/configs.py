@@ -3,7 +3,7 @@ import torch
 import torchvision.transforms.functional as TF
 import torch.optim as optim
 from model import (
-    ResNet18, ResNet50, DenseNet121, VGG11, ViT_B_16, EfficientNetB4,
+    ResNet18, ResNet50, DenseNet121, VGG11, ViT_B_16, EfficientNetB4, ConvNet,
     initialize_bert_based_model, initialize_bert_transform
 )
 from wilds.datasets.fmow_dataset import FMoWDataset
@@ -58,12 +58,13 @@ def get_expected_label_distribution(dataset):
         
     config = {
         'CIFAR-10': [1 / 10] * 10,
+        'ColoredMNIST': [1 / 2] * 2,
         'CIFAR-100': [1 / 100] * 100,
         'ImageNet': [1 / 1000] * 1000,
         'Living-17': [1 / 17] * 17,
         'Nonliving-26': [1 / 26] * 26,
         'Entity-13': [1 / 13] * 13,
-        'Entity-30': [1 / 30] * 30,
+        'Entity-30': [1 / 30] * 30
     }
 
     return config[dataset]
@@ -117,7 +118,8 @@ def get_n_classes(dataset):
         'FMoW': 62,
         'RxRx1': 1139,
         'Amazon': 5,
-        'CivilComments':2
+        'CivilComments': 2,
+        'ColoredMNIST': 2
     }
 
     return n_class[dataset]
@@ -147,6 +149,12 @@ def get_transforms(dataset, split, pretrained):
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 		])
+    
+    elif dataset == 'ColoredMNIST':
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.1307, 0.1307, 0.), (0.3081, 0.3081, 0.3081))
+        ])
     
     elif dataset in ['Living-17', 'Nonliving-26', 'Entity-13', 'Entity-30']:
         transform = transforms.Compose([
@@ -216,6 +224,9 @@ def get_optimizer(dsname, net, lr, pretrained):
         else:
             return optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
     
+    elif dsname == 'ColoredMNIST':
+        return optim.Adam(net.parameters(), lr=lr)
+    
     elif dsname == 'ImageNet':
         return optim.Adam(net.parameters(), lr=lr)
     
@@ -246,6 +257,9 @@ def get_lr_scheduler(dsname, opt, pretrained, T_max=-1):
             return optim.lr_scheduler.CosineAnnealingLR(opt, T_max=T_max)
         else:
             return optim.lr_scheduler.MultiStepLR(opt, milestones=[100, 200], gamma=0.1)
+    
+    elif dsname == 'ColoredMNIST':
+        return optim.lr_scheduler.MultiStepLR(opt, milestones=[100, 200], gamma=1)
     
     elif dsname == 'ImageNet':
        return optim.lr_scheduler.MultiStepLR(opt, milestones=[100], gamma=1)
@@ -290,6 +304,8 @@ def get_models(arch, n_class, model_seed, pretrained):
         model = VGG11(num_classes=n_class, seed=model_seed, pretrained=pretrained)
     elif arch == 'distilbert-base-uncased':
         model = initialize_bert_based_model(n_class)
+    elif arch == 'convnet':
+        model = ConvNet()
     else:
         raise ValueError('incorrect model name')
 

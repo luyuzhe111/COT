@@ -136,7 +136,7 @@ class _ECELoss(nn.Module):
         return ece
     
 
-def calibrate(model, n_class, opt_bias, val_loader, temp_dir):
+def calibrate(model, n_class, val_loader, temp_dir, opt_bias=False):
     if os.path.exists(temp_dir):
         with open(temp_dir, 'r') as f:
             temp = json.load(f)

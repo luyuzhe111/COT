@@ -38,7 +38,7 @@ def get_threshold(net, iid_loader, n_class, args):
         
         return t
     
-    elif metric in ['COTT-MC', 'COTT-NE', 'COTT-val-MC']:
+    elif metric == 'COTT':
         if os.path.exists(cache_dir):
             with open(cache_dir, 'r') as f:
                 data = json.load(f)
@@ -50,12 +50,6 @@ def get_threshold(net, iid_loader, n_class, args):
                 json.dump({'t': t}, f)
         
         return t
-
-    elif metric == 'SCOTT':
-        t = compute_sliced_t(net, iid_loader, n_class)
-        return t
-    else:
-        raise ValueError(f'unknown metric {metric}')
         
 
 def compute_cott(net, iid_loader, n_class, metric):
@@ -77,38 +71,29 @@ def compute_cott(net, iid_loader, n_class, metric):
     softmax_vecs = torch.cat(softmax_vecs, dim=0)
     target_vecs = nn.functional.one_hot(tars)
     
-    if metric == 'COTT-val-MC':
-        n_incorrect = preds.ne(tars).sum()
-        costs = (1 - softmax_vecs.amax(1)) * 2 * -1
-        t = torch.sort( costs )[0][n_incorrect - 1].item()
-    else:
-        max_n = 10000
-        if len(target_vecs) > max_n:
-            print(f'sampling {max_n} out of {len(target_vecs)} validation samples...')
-            torch.manual_seed(0)
-            rand_inds = torch.randperm(len(target_vecs))
-            tars = tars[rand_inds][:max_n]
-            preds = preds[rand_inds][:max_n]
-            target_vecs = target_vecs[rand_inds][:max_n]
-            softmax_vecs = softmax_vecs[rand_inds][:max_n]
+    max_n = 10000
+    if len(target_vecs) > max_n:
+        print(f'sampling {max_n} out of {len(target_vecs)} validation samples...')
+        torch.manual_seed(0)
+        rand_inds = torch.randperm(len(target_vecs))
+        tars = tars[rand_inds][:max_n]
+        preds = preds[rand_inds][:max_n]
+        target_vecs = target_vecs[rand_inds][:max_n]
+        softmax_vecs = softmax_vecs[rand_inds][:max_n]
 
-        print('computing assignment...')
-        M = torch.cdist(target_vecs.float(), softmax_vecs, p=1)
-        
-        start = time.time()
-        weights = torch.as_tensor([])
-        Pi = ot.emd(weights, weights, M, numItermax=1e8)
+    print('computing assignment...')
+    M = torch.cdist(target_vecs.float(), softmax_vecs, p=1)
+    
+    start = time.time()
+    weights = torch.as_tensor([])
+    Pi = ot.emd(weights, weights, M, numItermax=1e8)
 
-        print(f'done. {time.time() - start}s passed')
-        if metric == 'COTT-MC':
-            costs = ( Pi * M.shape[0] * M ).sum(1) * -1
-        elif metric == 'COTT-NE':
-            matched_softmax = softmax_vecs[torch.argmax(Pi, dim=1)]
-            matched_acts = (matched_softmax + target_vecs) / 2
-            costs = ( matched_acts * torch.log2(matched_acts) ).sum(1)
+    print(f'done. {time.time() - start}s passed')
+
+    costs = ( Pi * M.shape[0] * M ).sum(1) * -1
         
-        n_incorrect = preds.ne(tars).sum()
-        t = torch.sort( costs )[0][n_incorrect - 1].item()
+    n_incorrect = preds.ne(tars).sum()
+    t = torch.sort( costs )[0][n_incorrect - 1].item()
         
     return t
 
@@ -137,37 +122,6 @@ def compute_t(net, iid_loader, metric):
         t = torch.sort(mc)[0][misclassified - 1]
     elif metric == 'ATC-NE':
         t = torch.sort(ne)[0][misclassified - 1]
-    return t
-
-
-def compute_sliced_t(net, iid_loader, n_class):
-    net.eval()
-    softmax_vecs = []
-    preds, tars = [], []
-    with torch.no_grad():
-        for _, items in enumerate(tqdm(iid_loader)):
-            inputs, targets = items[0], items[1]
-            inputs, targets = inputs.cuda(), targets.cuda()
-            outputs = net(inputs)
-            _, prediction = outputs.max(1)
-
-            preds.extend( prediction.tolist() )
-            tars.extend( targets.tolist() )
-            softmax_vecs.append( nn.functional.softmax(outputs, dim=1).cpu() )
-    
-    preds, tars  = torch.as_tensor(preds), torch.as_tensor(tars)
-    softmax_vecs = torch.cat(softmax_vecs, dim=0)
-    target_vecs = nn.functional.one_hot(tars)
-    
-    torch.manual_seed(10)
-    slices = torch.randn(8, n_class)
-    slices = torch.stack([slice / torch.sqrt( torch.sum( slice ** 2 ) ) for slice in slices], dim=0)
-    
-    iid_act_scores = softmax_vecs.float() @ slices.T
-    ood_act_scores = target_vecs.float() @ slices.T
-    scores = torch.sort( torch.abs( torch.sort(ood_act_scores, dim=0)[0] - torch.sort(iid_act_scores, dim=0)[0] ), dim=0 )[0]
-    n_correct = preds.eq(tars).sum()
-    t = scores[n_correct - 1]
     return t
 
 
